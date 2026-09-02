@@ -51,6 +51,12 @@ Three roles in the `members` table, all enforced by row‑level security
 Anyone whose email isn't in `members` is stopped at the sign‑in screen.
 Admins set each person's role from the **Members** dialog.
 
+**Idle timeout:** a session is signed out after 5 minutes with no mouse,
+key, touch or scroll activity, with a 60‑second "Stay signed in" warning
+first. Change `IDLE_MIN` / `IDLE_WARN_SEC` near the top of `index.html`.
+For defence in depth you can also set an inactivity timeout server‑side in
+Supabase → Authentication → Sessions.
+
 ### Audit log
 
 Postgres triggers record every sign‑in and every create / edit / delete on

@@ -221,6 +221,10 @@ a{color:var(--primary-ink)}
 
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:120;background:var(--ink);color:var(--bg);
   padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;max-width:min(460px,92vw);box-shadow:var(--shadow);text-align:center}
+.idle-warn{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:130;background:var(--warn);color:#fff;
+  padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:var(--shadow);display:flex;gap:10px;align-items:center;max-width:min(480px,92vw)}
+.idle-warn .btn{background:#fff;border-color:#fff;color:var(--warn)}
+.idle-warn .btn:hover{background:#fff;color:var(--ink)}
 .loading{padding:60px;text-align:center;color:var(--muted)}
 
 body.gated .topbar,body.gated .shell{display:none}
@@ -297,6 +301,9 @@ body.gated .topbar,body.gated .shell{display:none}
    ============================================================ */
 const SUPABASE_URL = "https://gzsbsbrthiitbclkghnp.supabase.co";       // e.g. https://abcdefghijkl.supabase.co
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd6c2JzYnJ0aGlpdGJjbGtnaG5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMjYyODgsImV4cCI6MjEwMzkwMjI4OH0.W4UU9W9g3FHNCAjmwuLPIvVIp8RmG4_iPbpFTxkehn0";  // the "anon public" key (Supabase -> Project Settings -> API)
+
+const IDLE_MIN = 5;        // sign out after this many minutes with no activity
+const IDLE_WARN_SEC = 60;  // show a countdown warning this many seconds before
 
 /* ============================ helpers ============================ */
 const $=(s,r=document)=>r.querySelector(s);
@@ -455,7 +462,7 @@ const SCHEMAS={
 /* ============================ state ============================ */
 let sb=null;
 const state={session:null,me:null,people:[],events:[],currentId:null,filter:"all",
-  openEventId:null,loaded:false,editPersonId:null,gateView:null,gateMsg:"",eventsReq:0,_email:""};
+  openEventId:null,loaded:false,editPersonId:null,gateView:null,gateMsg:"",eventsReq:0,_email:"",idleTimedOut:false};
 let channels=[];
 let shownFor=null, routing=false;
 function isAdmin(){return !!(state.me&&state.me.role==="admin");}
@@ -509,10 +516,10 @@ async function route(){
 function teardown(){
   shownFor=null;state.me=null;state.people=[];state.events=[];state.currentId=null;state.loaded=false;
   channels.forEach(c=>{try{sb.removeChannel(c);}catch(e){}});channels=[];
-  closeDrawer();closeModal();
+  stopIdle();closeDrawer();closeModal();
 }
-async function signOut(){
-  try{await sb.rpc("log_event",{p_action:"signout",p_summary:""});}catch(e){}
+async function signOut(reason){
+  try{await sb.rpc("log_event",{p_action:"signout",p_summary:reason||""});}catch(e){}
   try{await sb.auth.signOut();}catch(e){}
 }
 let signinLogged=false;
@@ -526,6 +533,7 @@ function startApp(){
   renderAll();
   loadPeople();
   setupRealtime();
+  startIdle();
 }
 function setupRealtime(){
   try{
@@ -537,6 +545,43 @@ const reloadPeopleD=debounce(()=>{if(state.me)loadPeople();},450);
 const reloadEventsD=debounce(()=>{if(state.me&&state.currentId)loadEvents(state.currentId);},450);
 let lastFocus=0;
 window.addEventListener("focus",()=>{const n=Date.now();if(state.me&&n-lastFocus>4000){lastFocus=n;loadPeople();}});
+
+/* ============================ idle timeout ============================ */
+let idleTick=null, idleWarnEl=null;
+function throttle(fn,ms){let last=0;return function(){const n=Date.now();if(n-last>=ms){last=n;fn.apply(this,arguments);}};}
+function lastActiveTs(){let v=0;try{v=+localStorage.getItem("fhl_last_active")||0;}catch(e){}return v||Date.now();}
+function idleTouch(){try{localStorage.setItem("fhl_last_active",String(Date.now()));}catch(e){}if(idleWarnEl){idleWarnEl.remove();idleWarnEl=null;}}
+const idleThrottled=throttle(idleTouch,1000);
+function idleCheck(){
+  if(!state.me)return;
+  const idleMs=Date.now()-lastActiveTs(), total=IDLE_MIN*60000;
+  if(idleMs>=total){
+    if(state.idleTimedOut)return;
+    if(idleWarnEl){idleWarnEl.remove();idleWarnEl=null;}
+    state.idleTimedOut=true;
+    signOut("inactivity timeout");
+    return;
+  }
+  if(idleMs>=total-IDLE_WARN_SEC*1000){
+    if(!idleWarnEl){idleWarnEl=document.createElement("div");idleWarnEl.className="idle-warn";document.body.appendChild(idleWarnEl);}
+    idleWarnEl.innerHTML="Signing you out in "+Math.max(1,Math.ceil((total-idleMs)/1000))+"s — no activity. "+
+      '<button class="btn sm" data-act="stay">Stay signed in</button>';
+  }else if(idleWarnEl){idleWarnEl.remove();idleWarnEl=null;}
+}
+const IDLE_EVENTS=["mousemove","mousedown","keydown","touchstart","scroll","click"];
+function startIdle(){
+  stopIdle();
+  IDLE_EVENTS.forEach(ev=>window.addEventListener(ev,idleThrottled,{passive:true}));
+  idleTouch();
+  idleTick=setInterval(idleCheck,2000);
+}
+function stopIdle(){
+  clearInterval(idleTick);idleTick=null;
+  IDLE_EVENTS.forEach(ev=>window.removeEventListener(ev,idleThrottled));
+  if(idleWarnEl){idleWarnEl.remove();idleWarnEl=null;}
+}
+window.addEventListener("storage",e=>{if(e.key==="fhl_last_active"&&idleWarnEl){idleWarnEl.remove();idleWarnEl=null;}});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&state.me)idleCheck();});
 
 /* ============================ data layer ============================ */
 function mapPerson(r){
@@ -861,7 +906,9 @@ function renderGate(view,msg){
       '<button class="btn primary" data-act="cfg-save">Save &amp; continue</button>'+
       '<p class="fineprint">The anon key is safe to expose — access is enforced by row-level security and the members list.</p></div>';
   }else if(view==="login"){
-    card='<div class="gate-card">'+brand+'<h1>Sign in</h1>'+
+    const idleNote=state.idleTimedOut?'<div class="ok">Signed out after '+IDLE_MIN+' minutes of inactivity. Sign in to continue.</div>':"";
+    state.idleTimedOut=false;
+    card='<div class="gate-card">'+brand+'<h1>Sign in</h1>'+idleNote+
       '<p class="sub">Enter your email and we’ll send you a one-time sign-in link. No password.</p>'+errHtml+
       '<label class="fld"><span>Email address</span><input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" value="'+esc(keepEmail)+'"></label>'+
       '<button class="btn primary" data-act="send-link">Email me a sign-in link</button>'+
@@ -1386,6 +1433,7 @@ document.addEventListener("click",ev=>{
     case "login-restart":renderGate("login");break;
     case "route-retry":shownFor=null;state.gateMsg="";route();break;
     case "signout":signOut();break;
+    case "stay":idleTouch();break;
 
     /* app */
     case "members":membersModal();break;
