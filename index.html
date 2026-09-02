@@ -1,0 +1,1071 @@
+<title>Family Health Ledger</title>
+<meta name="description" content="A private record of consultations, labs, prescriptions, emergencies and appointments for every member of the family.">
+<style>
+:root{
+  --bg:#F4F2EC; --surface:#FFFFFF; --surface-2:#FBFAF6; --ink:#1C2422; --muted:#5E685F;
+  --faint:#8A938C; --line:#E4E1D7; --line-strong:#D1CDBF;
+  --primary:#0E7C6B; --primary-ink:#0A5B4F; --primary-soft:#DCEBE6;
+  --ok:#3A7D44; --warn:#966011; --crit:#B23B3B; --info:#3B6EA5;
+  --t-appt:#3B6EA5; --t-consult:#0E7C6B; --t-lab:#7B5EA8; --t-rx:#3A7D44;
+  --t-er:#B23B3B; --t-vitals:#966011; --t-vax:#2C8299; --t-note:#79837B;
+  --shadow:0 1px 2px rgba(28,36,34,.05), 0 10px 28px -14px rgba(28,36,34,.18);
+  --radius:11px;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:"Public Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --serif:"Spectral","Iowan Old Style",Georgia,serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#121614; --surface:#1A201D; --surface-2:#151A18; --ink:#E7ECE9; --muted:#9DA8A1;
+    --faint:#70807A; --line:#2A322E; --line-strong:#3A433E;
+    --primary:#3FB3A1; --primary-ink:#8FD8CD; --primary-soft:#173430;
+    --ok:#5FB56B; --warn:#D69A46; --crit:#E0736F; --info:#6FA0D0;
+    --t-appt:#6FA0D0; --t-consult:#3FB3A1; --t-lab:#A98FD6; --t-rx:#5FB56B;
+    --t-er:#E0736F; --t-vitals:#D69A46; --t-vax:#5FB0C6; --t-note:#8A938D;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 14px 32px -16px rgba(0,0,0,.65);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121614; --surface:#1A201D; --surface-2:#151A18; --ink:#E7ECE9; --muted:#9DA8A1;
+  --faint:#70807A; --line:#2A322E; --line-strong:#3A433E;
+  --primary:#3FB3A1; --primary-ink:#8FD8CD; --primary-soft:#173430;
+  --ok:#5FB56B; --warn:#D69A46; --crit:#E0736F; --info:#6FA0D0;
+  --t-appt:#6FA0D0; --t-consult:#3FB3A1; --t-lab:#A98FD6; --t-rx:#5FB56B;
+  --t-er:#E0736F; --t-vitals:#D69A46; --t-vax:#5FB0C6; --t-note:#8A938D;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 14px 32px -16px rgba(0,0,0,.65);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--serif);font-weight:600;margin:0;text-wrap:balance;letter-spacing:-.01em}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+a{color:var(--primary-ink)}
+::selection{background:var(--primary-soft)}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+
+/* ---- topbar ---- */
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;
+  padding:11px clamp(14px,3vw,26px);background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--serif);font-size:17px;font-weight:600}
+.brand .mark{width:26px;height:26px;border-radius:7px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:15px}
+.top-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line-strong);background:var(--surface);padding:7px 12px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--primary);color:var(--primary-ink)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary-ink);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.sm{padding:5px 9px;font-size:12px}
+.btn.danger:hover{border-color:var(--crit);color:var(--crit)}
+.icon-btn{border:1px solid var(--line-strong);background:var(--surface);width:34px;height:34px;border-radius:8px;display:grid;place-items:center;font-size:15px}
+.icon-btn:hover{border-color:var(--primary)}
+
+/* ---- shell ---- */
+.shell{display:grid;grid-template-columns:236px 1fr;min-height:calc(100vh - 57px)}
+.rail{border-right:1px solid var(--line);background:var(--surface-2);padding:16px 12px;display:flex;flex-direction:column;gap:6px}
+.rail h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-family:var(--sans);font-weight:700;margin:2px 6px 4px}
+.person-btn{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid transparent;background:transparent;padding:8px 9px;border-radius:9px}
+.person-btn:hover{background:var(--surface);border-color:var(--line)}
+.person-btn[aria-current="true"]{background:var(--surface);border-color:var(--line-strong);box-shadow:var(--shadow)}
+.avatar{flex:none;width:32px;height:32px;border-radius:50%;background:var(--primary-soft);color:var(--primary-ink);
+  display:grid;place-items:center;font-weight:700;font-size:12.5px;font-family:var(--mono)}
+.person-btn .pn{font-weight:600;font-size:13.5px;line-height:1.2}
+.person-btn .pr{font-size:11.5px;color:var(--muted)}
+.person-btn .pdot{margin-left:auto;flex:none;width:7px;height:7px;border-radius:50%;background:var(--t-appt)}
+.rail-foot{margin-top:auto;padding:10px 6px 0;font-size:11px;color:var(--faint);border-top:1px solid var(--line);line-height:1.45}
+
+/* ---- main ---- */
+.main{padding:22px clamp(14px,4vw,40px) 60px;max-width:1000px;margin:0 auto;width:100%}
+.banner{display:flex;gap:12px;align-items:flex-start;background:var(--primary-soft);border:1px solid color-mix(in srgb,var(--primary) 30%,transparent);
+  color:var(--primary-ink);padding:12px 14px;border-radius:var(--radius);margin-bottom:20px;font-size:13px}
+.banner.warn{background:color-mix(in srgb,var(--warn) 14%,var(--surface));border-color:color-mix(in srgb,var(--warn) 40%,transparent);color:var(--ink)}
+.banner .bx{margin-left:auto;display:flex;gap:8px;flex:none}
+
+.phead{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.phead .avatar{width:52px;height:52px;font-size:18px}
+.phead h1{font-size:25px}
+.phead-sub{color:var(--muted);font-size:13px;margin-top:2px;font-variant-numeric:tabular-nums}
+.phead-actions{margin-left:auto;display:flex;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.chip{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--surface);border:1px solid var(--line-strong);color:var(--muted)}
+.chip.cond{border-color:color-mix(in srgb,var(--primary) 45%,transparent);color:var(--primary-ink);background:var(--primary-soft)}
+.chip.alg{border-color:color-mix(in srgb,var(--crit) 45%,transparent);color:var(--crit)}
+.careteam{font-size:12.5px;color:var(--muted);margin-top:10px}
+.careteam b{color:var(--ink);font-weight:600}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:22px 0 4px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:13px 14px;box-shadow:var(--shadow);min-height:92px;display:flex;flex-direction:column;gap:3px}
+.tile.tap{cursor:pointer}.tile.tap:hover{border-color:var(--primary)}
+.tile .tl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.tile .tv{font-family:var(--serif);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.tile .tsub{font-size:11.5px;color:var(--muted)}
+.tile .spark{color:var(--t-vitals);margin-top:auto}
+.tile .flagdot{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle;margin-left:5px}
+
+.attention{margin:18px 0;border:1px solid color-mix(in srgb,var(--warn) 38%,transparent);border-radius:var(--radius);overflow:hidden}
+.attention h3{font-family:var(--sans);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);font-weight:700;
+  padding:9px 13px;background:color-mix(in srgb,var(--warn) 12%,var(--surface))}
+.attention ul{list-style:none;margin:0;padding:4px 0}
+.attention li{padding:7px 13px;font-size:13px;display:flex;gap:8px;align-items:baseline}
+.attention li .ad{color:var(--muted);font-size:12px}
+
+.sec-head{display:flex;align-items:center;gap:12px;margin:26px 0 12px}
+.sec-head h2{font-size:17px}
+.sec-head .btn{margin-left:auto}
+
+.appt-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.appt-card{border:1px solid var(--line);border-left:3px solid var(--t-appt);border-radius:9px;background:var(--surface);padding:11px 13px;cursor:pointer}
+.appt-card:hover{border-color:var(--primary);border-left-color:var(--t-appt)}
+.appt-card .aw{font-size:11px;font-family:var(--mono);color:var(--t-appt);font-weight:600}
+.appt-card .at{font-weight:600;font-size:13.5px;margin:2px 0}
+.appt-card .as{font-size:12px;color:var(--muted)}
+
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.filters button{border:1px solid var(--line-strong);background:var(--surface);padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;color:var(--muted)}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button .c{opacity:.6;font-family:var(--mono);font-size:11px;margin-left:4px}
+
+.timeline{display:flex;flex-direction:column}
+.tl-row{display:grid;grid-template-columns:74px 1fr auto;gap:13px;align-items:start;text-align:left;width:100%;
+  background:transparent;border:0;border-top:1px solid var(--line);padding:13px 6px}
+.tl-row:hover{background:var(--surface-2)}
+.tl-row:first-child{border-top:0}
+.tl-date{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.35;padding-top:1px}
+.tl-date b{display:block;color:var(--ink);font-size:12.5px}
+.tag{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.04em;color:#fff;
+  padding:2px 6px;border-radius:5px;vertical-align:middle}
+.tl-row>span:nth-child(2){min-width:0}
+.tl-l1{display:block}
+.tl-title{font-weight:600;margin-left:7px}
+.tl-l2{display:block;font-size:12.5px;color:var(--muted);margin-top:3px}
+.pill{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.info{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
+.pill.ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.pill.crit{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit)}
+.pill.mute{background:var(--line);color:var(--muted)}
+
+.empty{border:1px dashed var(--line-strong);border-radius:var(--radius);padding:30px;text-align:center;color:var(--muted)}
+.empty h3{font-size:16px;color:var(--ink);margin-bottom:6px}
+
+/* ---- drawer ---- */
+#scrim{position:fixed;inset:0;background:rgba(12,16,14,.44);z-index:55}
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(490px,95vw);background:var(--surface);
+  border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:60;overflow-y:auto;padding:0}
+.dw-head{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);padding:16px 18px;display:flex;gap:10px;align-items:flex-start}
+.dw-head h2{font-size:18px;flex:1}
+.dw-body{padding:16px 18px 40px}
+.dw-meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:14px}
+.frow{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.frow:first-child{border-top:0}
+.frow .fk{color:var(--faint);font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding-top:2px}
+.frow .fv{white-space:pre-wrap}
+.res-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+.res-table th{text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:4px 6px;border-bottom:1px solid var(--line)}
+.res-table td{padding:5px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.res-table .fl{font-weight:700}
+.fl-high,.fl-low{color:var(--warn)} .fl-critical{color:var(--crit)} .fl-normal{color:var(--muted)}
+.att{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.att-item{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:12.5px}
+.att-item .ai-ic{flex:none;width:30px;height:30px;border-radius:7px;background:var(--surface-2);display:grid;place-items:center;font-family:var(--mono);font-size:10px;font-weight:700;color:var(--muted)}
+.att-item .ai-b{flex:1;min-width:0}
+.att-item .ai-n{font-weight:600;word-break:break-word}
+.att-item .ai-l{color:var(--muted);font-size:11.5px}
+.att-item .ai-x{display:flex;gap:6px;flex:none}
+.att-add{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.refform{border:1px solid var(--line);border-radius:9px;padding:11px;margin-top:9px;display:flex;flex-direction:column;gap:8px}
+
+/* ---- modal / forms ---- */
+#modalRoot{position:fixed;inset:0;z-index:80;background:rgba(12,16,14,.5);display:grid;place-items:start center;padding:28px 16px;overflow:auto}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);width:min(660px,100%);overflow:hidden}
+.modal-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.modal-head h2{font-size:18px;flex:1}
+.modal-body{padding:18px 20px;max-height:70vh;overflow-y:auto}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;background:var(--surface-2)}
+.typegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.typegrid button{border:1px solid var(--line-strong);background:var(--surface);border-radius:10px;padding:14px 12px;text-align:left;display:flex;flex-direction:column;gap:3px}
+.typegrid button:hover{border-color:var(--primary);background:var(--surface-2)}
+.typegrid .tt{font-weight:700;font-size:13.5px}
+.typegrid .td{font-size:11.5px;color:var(--muted)}
+.typegrid .tg-tag{align-self:flex-start;margin-bottom:4px}
+.fld{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
+.fld>span{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.fld input,.fld select,.fld textarea{border:1px solid var(--line-strong);background:var(--surface-2);border-radius:8px;padding:8px 10px;width:100%}
+.fld textarea{resize:vertical;min-height:64px}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--primary);background:var(--surface);outline:none}
+.fld.cb{flex-direction:row;align-items:center;gap:8px}
+.fld.cb input{width:auto} .fld.cb span{text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--ink)}
+.fld.invalid input,.fld.invalid select{border-color:var(--crit)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.grp{display:flex;flex-direction:column;gap:8px}
+.grp-row{border:1px solid var(--line);border-radius:9px;padding:10px;position:relative;background:var(--surface-2)}
+.grp-row .grp-del{position:absolute;top:6px;right:6px;border:0;background:transparent;color:var(--faint);font-size:16px;line-height:1;padding:2px 6px}
+.grp-row .grp-del:hover{color:var(--crit)}
+.grp-add{align-self:flex-start;border:1px dashed var(--line-strong);background:transparent;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600;color:var(--muted)}
+.grp-add:hover{border-color:var(--primary);color:var(--primary-ink)}
+
+.imgview{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.8);display:grid;place-items:center;padding:24px}
+.imgview img{max-width:100%;max-height:100%;border-radius:8px}
+
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100;background:var(--ink);color:var(--bg);
+  padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;max-width:min(460px,92vw);box-shadow:var(--shadow)}
+
+.loading{padding:60px;text-align:center;color:var(--muted)}
+
+@media (max-width:560px){.grid2{grid-template-columns:1fr}.frow{grid-template-columns:1fr}.frow .fk{padding-top:0}}
+@media (max-width:820px){
+  .shell{grid-template-columns:1fr}
+  .rail{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);align-items:center;gap:8px;padding:10px 12px}
+  .rail h2,.rail-foot{display:none}
+  .person-btn{width:auto;flex:none}
+  .person-btn .pr{display:none}
+  .rail .btn{flex:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="topbar">
+  <div class="brand"><span class="mark">&#43;</span> Family Health Ledger</div>
+  <div class="top-actions" id="topActions"></div>
+</div>
+<div class="shell">
+  <nav class="rail" id="rail"></nav>
+  <main class="main" id="main"><div class="loading">Loading records&hellip;</div></main>
+</div>
+<div id="scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden></aside>
+<div id="modalRoot" hidden></div>
+<div id="toast" hidden></div>
+
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Spectral:wght@500;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+
+<script>
+"use strict";
+/* ============================ helpers ============================ */
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid=()=>(self.crypto&&crypto.randomUUID?crypto.randomUUID():"id-"+Date.now()+"-"+Math.random().toString(16).slice(2));
+const todayISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
+const nowMinISO=()=>{const d=new Date();return todayISO()+"T"+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");};
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDate(iso){if(!iso)return "—";const p=String(iso).slice(0,10).split("-");const y=+p[0],m=+p[1],d=+p[2];if(!y)return esc(iso);return y+" "+MON[(m||1)-1]+" "+String(d||1).padStart(2,"0");}
+function fmtDateTime(iso){if(!iso)return "—";const s=String(iso);let out=fmtDate(s.slice(0,10));const t=s.slice(11,16);if(t){let h=+t.slice(0,2);const mi=t.slice(3,5);const ap=h>=12?"PM":"AM";h=h%12||12;out+=", "+h+":"+mi+" "+ap;}return out;}
+function daysFromToday(iso){const t=new Date();t.setHours(0,0,0,0);const d=new Date(String(iso).slice(0,10)+"T00:00:00");return Math.round((d-t)/86400000);}
+function relLabel(iso){const n=daysFromToday(iso);if(n===0)return "today";if(n===1)return "tomorrow";if(n===-1)return "yesterday";return n>0?"in "+n+" days":Math.abs(n)+" days ago";}
+function ageStr(dob){if(!dob)return "";const b=new Date(dob),n=new Date();let a=n.getFullYear()-b.getFullYear();const m=n.getMonth()-b.getMonth();if(m<0||(m===0&&n.getDate()<b.getDate()))a--;return a>=0&&a<150?a+" yr":"";}
+function initials(n){return String(n||"?").trim().split(/\s+/).slice(0,2).map(x=>x[0]||"").join("").toUpperCase();}
+function trunc(s,n){s=String(s||"");return s.length>n?s.slice(0,n-1)+"…":s;}
+function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(t._t);t._t=setTimeout(()=>{t.hidden=true;},4600);}
+
+/* ============================ type model ============================ */
+const TYPES={
+  appointment:{tag:"APPT",label:"Appointment",color:"var(--t-appt)",blurb:"An upcoming or past scheduled visit"},
+  consultation:{tag:"CONSULT",label:"Consultation",color:"var(--t-consult)",blurb:"A doctor visit with findings & plan"},
+  lab:{tag:"LAB",label:"Laboratory",color:"var(--t-lab)",blurb:"Blood work, imaging, sputum, pathology"},
+  prescription:{tag:"RX",label:"Prescription",color:"var(--t-rx)",blurb:"A medication that was prescribed"},
+  emergency:{tag:"ER",label:"Emergency",color:"var(--t-er)",blurb:"An ER visit or admission"},
+  vitals:{tag:"VITALS",label:"Vitals & readings",color:"var(--t-vitals)",blurb:"Glucose, blood pressure, weight"},
+  immunization:{tag:"VAX",label:"Immunization",color:"var(--t-vax)",blurb:"A vaccine or booster given"},
+  note:{tag:"NOTE",label:"History / note",color:"var(--t-note)",blurb:"Diagnosis history, surgery, free notes"}
+};
+const TYPE_ORDER=["appointment","consultation","lab","prescription","emergency","vitals","immunization","note"];
+
+const PERSON_SCHEMA=[
+  {k:"name",l:"Full name",t:"text",req:true},
+  {k:"relation",l:"Relation to you",t:"select",opts:["Father","Mother","Spouse / Partner","Son","Daughter","Sibling","Grandparent","Grandchild","Self","Other"],def:"Father"},
+  {k:"dob",l:"Date of birth",t:"date",half:true},
+  {k:"sex",l:"Sex",t:"select",opts:["","Female","Male","Other"],half:true},
+  {k:"bloodType",l:"Blood type",t:"select",opts:["","O+","O-","A+","A-","B+","B-","AB+","AB-","Unknown"],half:true},
+  {k:"allergies",l:"Allergies",t:"group",singular:"allergy",fields:[{k:"name",l:"Allergen",t:"text"},{k:"reaction",l:"Reaction",t:"text"}]},
+  {k:"conditions",l:"Ongoing conditions",t:"group",singular:"condition",fields:[{k:"name",l:"Condition",t:"text"},{k:"since",l:"Since",t:"text",ph:"e.g. 2019 or Jan 2026",half:true},{k:"status",l:"Status",t:"select",opts:["Active","On treatment","In remission","Resolved"],half:true}]},
+  {k:"careTeam",l:"Care team",t:"group",singular:"doctor",fields:[{k:"name",l:"Name",t:"text",half:true},{k:"role",l:"Specialty / role",t:"text",half:true},{k:"contact",l:"Contact",t:"text"}]},
+  {k:"notes",l:"General notes",t:"textarea"}
+];
+
+const SCHEMAS={
+  appointment:[
+    {k:"datetime",l:"Date & time",t:"datetime-local",req:true},
+    {k:"purpose",l:"Purpose",t:"text",req:true,ph:"e.g. Sputum follow-up & pulmonology review"},
+    {k:"withWhom",l:"Doctor / department",t:"text",half:true},
+    {k:"facility",l:"Facility",t:"text",half:true},
+    {k:"prep",l:"Preparation / what to bring",t:"textarea",ph:"e.g. 12-hour fasting; bring glucometer log and TB treatment card"},
+    {k:"status",l:"Status",t:"select",opts:["scheduled","completed","missed","rescheduled","cancelled"],def:"scheduled",half:true},
+    {k:"notes",l:"Notes",t:"textarea"}
+  ],
+  consultation:[
+    {k:"date",l:"Date",t:"date",req:true,half:true},
+    {k:"specialty",l:"Specialty",t:"text",ph:"e.g. Pulmonology",half:true},
+    {k:"facility",l:"Facility",t:"text",half:true},
+    {k:"doctor",l:"Doctor",t:"text",half:true},
+    {k:"reason",l:"Reason for visit",t:"text"},
+    {k:"findings",l:"Findings",t:"textarea"},
+    {k:"assessment",l:"Assessment / diagnosis",t:"textarea"},
+    {k:"plan",l:"Plan",t:"textarea"},
+    {k:"followUpDate",l:"Follow-up date",t:"date",half:true},
+    {k:"cost",l:"Cost",t:"text",half:true}
+  ],
+  lab:[
+    {k:"date",l:"Date",t:"date",req:true,half:true},
+    {k:"panel",l:"Panel / study",t:"text",req:true,ph:"e.g. HbA1c, Sputum GeneXpert, Chest X-ray",half:true},
+    {k:"facility",l:"Facility / laboratory",t:"text",half:true},
+    {k:"doctor",l:"Ordered by",t:"text",half:true},
+    {k:"results",l:"Results",t:"group",singular:"result",fields:[
+      {k:"analyte",l:"Test",t:"text",half:true},{k:"value",l:"Result",t:"text",half:true},
+      {k:"unit",l:"Unit",t:"text",half:true},{k:"ref",l:"Reference range",t:"text",half:true},
+      {k:"flag",l:"Flag",t:"select",opts:["normal","high","low","critical"]}
+    ]},
+    {k:"impression",l:"Impression / interpretation",t:"textarea"},
+    {k:"cost",l:"Cost",t:"text",half:true}
+  ],
+  prescription:[
+    {k:"date",l:"Date prescribed",t:"date",req:true,half:true},
+    {k:"drug",l:"Medication",t:"text",req:true,ph:"e.g. Metformin, FDC HRZE",half:true},
+    {k:"strength",l:"Strength",t:"text",ph:"e.g. 500 mg",half:true},
+    {k:"form",l:"Form",t:"select",opts:["tablet","capsule","syrup","injection","inhaler","patch","drops","other"],half:true},
+    {k:"dose",l:"Dose",t:"text",ph:"e.g. 1 tablet",half:true},
+    {k:"frequency",l:"Frequency",t:"text",ph:"e.g. twice daily with meals",half:true},
+    {k:"route",l:"Route",t:"select",opts:["oral","subcutaneous","intramuscular","intravenous","inhaled","topical","other"],half:true},
+    {k:"startDate",l:"Start date",t:"date",half:true},
+    {k:"endDate",l:"End date",t:"date",half:true},
+    {k:"ongoing",l:"Currently taking (ongoing)",t:"checkbox"},
+    {k:"prescriber",l:"Prescriber",t:"text",half:true},
+    {k:"purpose",l:"Purpose / indication",t:"text",half:true},
+    {k:"regimenTag",l:"Regimen / group",t:"text",ph:"e.g. TB DOTS - continuation phase"},
+    {k:"notes",l:"Notes",t:"textarea"}
+  ],
+  emergency:[
+    {k:"datetime",l:"Date & time",t:"datetime-local",req:true},
+    {k:"facility",l:"Facility",t:"text"},
+    {k:"chiefComplaint",l:"Chief complaint",t:"text",req:true},
+    {k:"triage",l:"Triage level",t:"select",opts:["","resuscitation","emergent","urgent","less urgent","non-urgent"],half:true},
+    {k:"disposition",l:"Disposition",t:"select",opts:["discharged","admitted","under observation","transferred","left against advice"],half:true},
+    {k:"diagnosis",l:"Diagnosis",t:"textarea"},
+    {k:"treatment",l:"Treatment given",t:"textarea"},
+    {k:"dischargeDate",l:"Discharge date",t:"date",half:true},
+    {k:"doctor",l:"Attending doctor",t:"text",half:true},
+    {k:"cost",l:"Cost",t:"text",half:true}
+  ],
+  vitals:[
+    {k:"date",l:"Date",t:"date",req:true,half:true},
+    {k:"time",l:"Time",t:"text",ph:"e.g. 6:30 AM",half:true},
+    {k:"glucose",l:"Blood glucose (mg/dL)",t:"number",half:true},
+    {k:"glucoseContext",l:"Glucose context",t:"select",opts:["","fasting","pre-meal","2-hr post-meal","random","bedtime"],half:true},
+    {k:"bpSys",l:"BP systolic",t:"number",half:true},
+    {k:"bpDia",l:"BP diastolic",t:"number",half:true},
+    {k:"pulse",l:"Pulse (bpm)",t:"number",half:true},
+    {k:"tempC",l:"Temp (°C)",t:"number",half:true},
+    {k:"weightKg",l:"Weight (kg)",t:"number",half:true},
+    {k:"heightCm",l:"Height (cm)",t:"number",half:true},
+    {k:"notes",l:"Notes",t:"text"}
+  ],
+  immunization:[
+    {k:"date",l:"Date given",t:"date",req:true,half:true},
+    {k:"vaccine",l:"Vaccine",t:"text",req:true,half:true},
+    {k:"doseNumber",l:"Dose",t:"text",ph:"e.g. 1 of 2, booster",half:true},
+    {k:"facility",l:"Facility",t:"text",half:true},
+    {k:"site",l:"Injection site",t:"text",half:true},
+    {k:"lotNumber",l:"Lot number",t:"text",half:true},
+    {k:"nextDueDate",l:"Next dose due",t:"date",half:true},
+    {k:"notes",l:"Notes",t:"text"}
+  ],
+  note:[
+    {k:"date",l:"Date",t:"date",req:true,half:true},
+    {k:"title",l:"Title",t:"text",req:true,ph:"e.g. Diagnosis history, Surgery, Family history",half:true},
+    {k:"body",l:"Details",t:"textarea"}
+  ]
+};
+
+/* ============================ example data ============================ */
+const EX_PEOPLE=[
+  {id:"ex-ramon",example:true,name:"Ramon S.",relation:"Father",dob:"1958-03-11",sex:"Male",bloodType:"O+",
+   allergies:[{name:"Penicillin",reaction:"Skin rash"}],
+   conditions:[{name:"Pulmonary tuberculosis",since:"Jan 2026",status:"On treatment"},{name:"Type 2 diabetes mellitus",since:"2019",status:"Active"},{name:"Hypertension",since:"2021",status:"Active"}],
+   careTeam:[{name:"Dr. A. Mendoza",role:"Pulmonology"},{name:"Dr. L. Reyes",role:"Endocrinology"}],
+   notes:"Enrolled in the DOTS program. Keeps a paper TB treatment card and a home glucometer logbook."},
+  {id:"ex-elena",example:true,name:"Elena S.",relation:"Mother",dob:"1961-07-02",sex:"Female",bloodType:"A+",
+   allergies:[],conditions:[{name:"Hypothyroidism",since:"2016",status:"Active"}],
+   careTeam:[{name:"Dr. L. Reyes",role:"Endocrinology"}],notes:""}
+];
+const EX_EVENTS={
+  "ex-ramon":[
+    {id:"e1",type:"appointment",date:"2026-09-15",datetime:"2026-09-15T09:00",purpose:"Sputum smear follow-up (month 5) & pulmonology review",withWhom:"Dr. A. Mendoza",facility:"Lung Center of the Philippines",prep:"Collect an early-morning sputum sample before coming. Bring the TB treatment card.",status:"scheduled"},
+    {id:"e2",type:"appointment",date:"2026-09-22",datetime:"2026-09-22T13:30",purpose:"Endocrinology follow-up — review HbA1c",withWhom:"Dr. L. Reyes",facility:"St. Luke's Medical Center",prep:"8-hour fasting. Bring glucometer and home glucose log. Take morning meds after the blood draw.",status:"scheduled"},
+    {id:"e3",type:"lab",date:"2026-08-30",panel:"HbA1c + fasting metabolic panel",facility:"St. Luke's Medical Center",doctor:"Dr. L. Reyes",
+      results:[{analyte:"HbA1c",value:"7.8",unit:"%",ref:"< 7.0",flag:"high"},{analyte:"Fasting blood glucose",value:"142",unit:"mg/dL",ref:"70–99",flag:"high"},{analyte:"Creatinine",value:"1.0",unit:"mg/dL",ref:"0.7–1.3",flag:"normal"},{analyte:"eGFR",value:"82",unit:"mL/min/1.73m²",ref:"> 90",flag:"low"},{analyte:"ALT (SGPT)",value:"28",unit:"U/L",ref:"< 41",flag:"normal"}],
+      impression:"Glycemic control above target. Liver enzymes normal on anti-TB therapy. Mild reduction in eGFR — monitor.",cost:"₱1,850",
+      attachments:[{id:"a1",name:"Official laboratory result (PDF)",kind:"reference",refLocation:"St. Luke's patient portal + printout in the blue folder",hasFile:false}]},
+    {id:"e4",type:"vitals",date:"2026-08-30",time:"6:40 AM",glucose:"138",glucoseContext:"fasting",bpSys:"134",bpDia:"84",pulse:"76",weightKg:"58",heightCm:"168",notes:"Home reading before clinic."},
+    {id:"e5",type:"vitals",date:"2026-08-12",glucose:"136",glucoseContext:"fasting"},
+    {id:"e6",type:"vitals",date:"2026-07-24",glucose:"143",glucoseContext:"fasting",weightKg:"57.4"},
+    {id:"e7",type:"vitals",date:"2026-07-08",glucose:"141",glucoseContext:"fasting"},
+    {id:"e8",type:"vitals",date:"2026-06-20",glucose:"146",glucoseContext:"fasting"},
+    {id:"e9",type:"vitals",date:"2026-06-05",glucose:"152",glucoseContext:"fasting",weightKg:"56.5"},
+    {id:"e10",type:"emergency",date:"2026-05-02",datetime:"2026-05-02T15:20",facility:"Makati Medical Center — Emergency Room",chiefComplaint:"Dizziness, cold sweats, tremor",triage:"urgent",disposition:"discharged",diagnosis:"Hypoglycemia (capillary glucose 54 mg/dL) after a skipped lunch.",treatment:"Oral glucose gel, then IV D50 25 mL. Repeat glucose 96 mg/dL after 20 min. Observed 2 hours.",dischargeDate:"2026-05-02",doctor:"Dr. P. Cruz",cost:"₱4,200"},
+    {id:"e11",type:"prescription",date:"2026-03-21",drug:"FDC Isoniazid + Rifampicin",strength:"75 mg / 150 mg",form:"tablet",dose:"4 tablets",frequency:"once daily on an empty stomach",route:"oral",startDate:"2026-03-21",ongoing:true,prescriber:"Dr. A. Mendoza",purpose:"Pulmonary tuberculosis",regimenTag:"TB DOTS — continuation phase (4 months)",notes:"Urine may turn orange-red — this is expected."},
+    {id:"e12",type:"consultation",date:"2026-03-20",specialty:"Pulmonology",facility:"Lung Center of the Philippines",doctor:"Dr. A. Mendoza",reason:"2-month review of anti-TB treatment",findings:"Cough resolved. Weight up 2 kg since start. No drug side effects reported.",assessment:"Good clinical response. Smear-negative at 2 months.",plan:"Shift to continuation phase: isoniazid + rifampicin for 4 months. Repeat sputum smear at month 5 and month 6.",followUpDate:"2026-09-15",cost:"₱800"},
+    {id:"e13",type:"lab",date:"2026-03-19",panel:"Sputum AFB smear — 2-month follow-up",facility:"Lung Center of the Philippines",doctor:"Dr. A. Mendoza",results:[{analyte:"Sputum AFB smear",value:"Negative",unit:"",ref:"Negative",flag:"normal"}],impression:"Smear conversion achieved at the end of the intensive phase."},
+    {id:"e14",type:"prescription",date:"2026-01-20",drug:"FDC HRZE",strength:"H75 / R150 / Z400 / E275 mg",form:"tablet",dose:"4 tablets",frequency:"once daily on an empty stomach",route:"oral",startDate:"2026-01-20",endDate:"2026-03-20",ongoing:false,prescriber:"Dr. A. Mendoza",purpose:"Pulmonary tuberculosis",regimenTag:"TB DOTS — intensive phase (2 months)"},
+    {id:"e15",type:"prescription",date:"2019-06-01",drug:"Metformin",strength:"500 mg",form:"tablet",dose:"1 tablet",frequency:"twice daily with meals",route:"oral",startDate:"2019-06-01",ongoing:true,prescriber:"Dr. L. Reyes",purpose:"Type 2 diabetes"},
+    {id:"e16",type:"prescription",date:"2021-08-10",drug:"Losartan",strength:"50 mg",form:"tablet",dose:"1 tablet",frequency:"once daily",route:"oral",startDate:"2021-08-10",ongoing:true,prescriber:"Dr. L. Reyes",purpose:"Hypertension"},
+    {id:"e17",type:"consultation",date:"2026-01-19",specialty:"Pulmonology",facility:"Lung Center of the Philippines",doctor:"Dr. A. Mendoza",reason:"2 weeks of productive cough, night sweats, weight loss",findings:"Weight 56 kg (down 4 kg). Crackles over the right upper lung.",assessment:"Bacteriologically confirmed pulmonary TB (see GeneXpert).",plan:"Start HRZE fixed-dose combination, weight-band dosing. Enrol in DOTS. Baseline bloods done. Screen household contacts.",followUpDate:"2026-03-20",cost:"₱800"},
+    {id:"e18",type:"lab",date:"2026-01-18",panel:"Sputum GeneXpert MTB/RIF, AFB smear, Chest X-ray",facility:"Lung Center of the Philippines",doctor:"Dr. A. Mendoza",
+      results:[{analyte:"Xpert MTB/RIF",value:"MTB detected (medium)",unit:"",ref:"Not detected",flag:"high"},{analyte:"Rifampicin resistance",value:"Not detected",unit:"",ref:"Not detected",flag:"normal"},{analyte:"Sputum AFB smear",value:"2+",unit:"",ref:"Negative",flag:"high"},{analyte:"Chest X-ray",value:"Fibronodular infiltrates, right upper lobe",unit:"",ref:"Clear",flag:"high"}],
+      impression:"Bacteriologically confirmed, rifampicin-sensitive pulmonary TB. Start Category I regimen.",
+      attachments:[{id:"a2",name:"Chest X-ray plate & radiologist report",kind:"reference",refLocation:"Lung Center Radiology — envelope in the blue folder",hasFile:false}]},
+    {id:"e19",type:"note",date:"2026-01-19",title:"TB diagnosis — household contact screening",body:"Spouse and two grandchildren screened at the Lung Center. All asymptomatic; chest X-rays clear. Grandchildren started on TB preventive therapy (3HP)."},
+    {id:"e20",type:"immunization",date:"2025-11-10",vaccine:"Influenza (quadrivalent)",doseNumber:"annual",facility:"Barangay health center",site:"Left deltoid",nextDueDate:"2026-11-01"}
+  ],
+  "ex-elena":[
+    {id:"f1",type:"appointment",date:"2026-09-30",datetime:"2026-09-30T10:00",purpose:"Thyroid function review",withWhom:"Dr. L. Reyes",facility:"St. Luke's Medical Center",prep:"Take levothyroxine AFTER the blood test, not before.",status:"scheduled"},
+    {id:"f2",type:"lab",date:"2026-08-28",panel:"Thyroid function",facility:"St. Luke's Medical Center",doctor:"Dr. L. Reyes",results:[{analyte:"TSH",value:"3.1",unit:"mIU/L",ref:"0.4–4.0",flag:"normal"},{analyte:"Free T4",value:"1.2",unit:"ng/dL",ref:"0.8–1.8",flag:"normal"}],impression:"Euthyroid on the current dose."},
+    {id:"f3",type:"prescription",date:"2024-02-10",drug:"Levothyroxine",strength:"75 mcg",form:"tablet",dose:"1 tablet",frequency:"once daily, 30–60 min before breakfast",route:"oral",startDate:"2024-02-10",ongoing:true,prescriber:"Dr. L. Reyes",purpose:"Hypothyroidism"},
+    {id:"f4",type:"vitals",date:"2026-08-28",bpSys:"122",bpDia:"78",pulse:"70",weightKg:"62"}
+  ]
+};
+
+/* ============================ state + boot ============================ */
+const state={db:null,downloads:null,mode:"loading",people:[],events:[],currentId:null,filter:"all",
+  openEventId:null,peopleUnsub:null,eventsUnsub:null,exampleReason:null};
+
+render();
+bootTheme();
+try{
+  if(self.claude&&claude.use){
+    claude.use("db").then(db=>{state.db=db||null;if(db){subscribePeople();}else{enterExample("nodb");}}).catch(()=>enterExample("nodb"));
+    claude.use("downloads").then(d=>{state.downloads=d||null;renderTop();}).catch(()=>{});
+  }else{enterExample("nodb");}
+}catch(e){enterExample("nodb");}
+
+function subscribePeople(){
+  if(state.peopleUnsub)state.peopleUnsub();
+  state.peopleUnsub=state.db.collection("people").orderBy("createdAt","asc").onSnapshot(snap=>{
+    const list=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+    if(!list.length){enterExample("empty");return;}
+    state.mode="live";state.people=list;
+    if(!state.currentId||!list.some(p=>p.id===state.currentId))state.currentId=list[0].id;
+    subscribeEvents();renderAll();
+  },err=>toast("Sync problem: "+(err&&err.code||"unknown")));
+}
+function subscribeEvents(){
+  if(state.eventsUnsub)state.eventsUnsub();
+  const pid=state.currentId;
+  state.eventsUnsub=state.db.collection("people/"+pid+"/events").orderBy("date","desc").onSnapshot(snap=>{
+    state.events=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+    renderAll();
+  },err=>toast("Sync problem: "+(err&&err.code||"unknown")));
+}
+function enterExample(reason){
+  if(state.eventsUnsub){state.eventsUnsub();state.eventsUnsub=null;}
+  state.mode="example";state.exampleReason=reason;state.people=EX_PEOPLE;
+  if(!state.currentId||!EX_PEOPLE.some(p=>p.id===state.currentId))state.currentId=EX_PEOPLE[0].id;
+  state.events=(EX_EVENTS[state.currentId]||[]).slice();
+  renderAll();
+}
+function currentPerson(){return state.people.find(p=>p.id===state.currentId)||state.people[0];}
+function isLive(){return state.mode==="live";}
+
+function bootTheme(){
+  let v=null;try{v=localStorage.getItem("fhl-theme");}catch(e){}
+  if(v==="dark"||v==="light")document.documentElement.setAttribute("data-theme",v);
+}
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute("data-theme");
+  const dark=window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches;
+  const next=(cur?cur==="dark":dark)?"light":"dark";
+  document.documentElement.setAttribute("data-theme",next);
+  try{localStorage.setItem("fhl-theme",next);}catch(e){}
+  renderTop();
+}
+
+/* ============================ derived ============================ */
+function eventTitle(e){
+  switch(e.type){
+    case "appointment":return e.purpose||"Appointment";
+    case "consultation":return e.reason||e.specialty||"Consultation";
+    case "lab":return e.panel||"Laboratory";
+    case "prescription":return (e.drug||"Medication")+(e.strength?" "+e.strength:"");
+    case "emergency":return e.chiefComplaint||"Emergency visit";
+    case "vitals":return vitalsTitle(e);
+    case "immunization":return e.vaccine||"Immunization";
+    case "note":return e.title||"Note";
+  }
+  return "Record";
+}
+function vitalsTitle(e){
+  const b=[];
+  if(e.glucose)b.push("Glucose "+e.glucose+(e.glucoseContext?" ("+e.glucoseContext+")":""));
+  if(e.bpSys&&e.bpDia)b.push("BP "+e.bpSys+"/"+e.bpDia);
+  if(e.pulse)b.push("HR "+e.pulse);
+  if(e.weightKg)b.push(e.weightKg+" kg");
+  if(e.tempC)b.push(e.tempC+" °C");
+  return b.join(" · ")||"Vitals recorded";
+}
+function eventLine2(e){
+  let p=[];
+  if(e.type==="appointment")p=[e.withWhom,e.facility];
+  else if(e.type==="consultation")p=[e.specialty||e.doctor,e.facility,trunc(e.assessment||e.findings||"",70)];
+  else if(e.type==="lab"){const r=(e.results||[]).slice(0,2).map(x=>x.analyte+" "+x.value+(x.unit?" "+x.unit:"")+(x.flag&&x.flag!=="normal"?" ("+x.flag+")":""));p=[e.facility].concat(r);}
+  else if(e.type==="prescription")p=[[e.dose,e.frequency].filter(Boolean).join(" "),e.regimenTag||e.purpose,e.ongoing?"":"(ended)"];
+  else if(e.type==="emergency")p=[e.facility,e.disposition];
+  else if(e.type==="vitals")p=[e.glucoseContext&&e.glucose?"":null,e.notes];
+  else if(e.type==="immunization")p=[e.facility,e.doseNumber,e.nextDueDate?"next due "+fmtDate(e.nextDueDate):null];
+  else if(e.type==="note")p=[trunc(e.body||"",96)];
+  return p.filter(Boolean).join(" · ");
+}
+function statusPill(e){
+  if(e.type==="appointment"&&e.status){
+    const m={scheduled:"info",completed:"ok",missed:"crit",cancelled:"mute",rescheduled:"warn"};
+    return {cls:m[e.status]||"mute",text:e.status};
+  }
+  if(e.type==="emergency"&&e.disposition){
+    const m={discharged:"mute",admitted:"warn","under observation":"warn",transferred:"warn","left against advice":"crit"};
+    return {cls:m[e.disposition]||"mute",text:e.disposition};
+  }
+  if(e.type==="prescription"&&e.ongoing)return {cls:"ok",text:"ongoing"};
+  return null;
+}
+function sortKey(e){return e.datetime||e.date||"";}
+function upcomingAppts(){
+  const now=nowMinISO();
+  return state.events.filter(e=>e.type==="appointment"&&(e.datetime||"")>=now&&(e.status==="scheduled"||e.status==="rescheduled"))
+    .sort((a,b)=>(a.datetime||"").localeCompare(b.datetime||""));
+}
+function attentionItems(){
+  const now=nowMinISO(),t=todayISO(),out=[];
+  state.events.forEach(e=>{
+    if(e.type==="appointment"&&(e.status==="scheduled"||e.status==="rescheduled")&&(e.datetime||"")<now)
+      out.push({t:"Past appointment still marked “"+e.status+"”",d:eventTitle(e)+" · "+fmtDateTime(e.datetime),id:e.id});
+    if(e.type==="immunization"&&e.nextDueDate&&e.nextDueDate<t)
+      out.push({t:"Immunization due",d:(e.vaccine||"")+" · due "+fmtDate(e.nextDueDate),id:e.id});
+    if(e.type==="consultation"&&e.followUpDate&&e.followUpDate<t)
+      out.push({t:"Follow-up date passed",d:"from the "+fmtDate(e.date)+" consultation",id:e.id});
+  });
+  return out;
+}
+function latestA1c(){
+  let best=null;
+  state.events.forEach(e=>{
+    if(e.type!=="lab")return;
+    (e.results||[]).forEach(r=>{
+      if(/a1c|hba1c/i.test(r.analyte||"")){
+        const v=parseFloat(r.value);if(isNaN(v))return;
+        if(!best||e.date>best.date)best={date:e.date,v:r.value,flag:r.flag};
+      }
+    });
+  });
+  return best;
+}
+function glucoseSeries(){
+  return state.events.filter(e=>e.type==="vitals"&&e.glucose&&!isNaN(parseFloat(e.glucose)))
+    .map(e=>({d:e.date,v:parseFloat(e.glucose),ctx:e.glucoseContext}))
+    .sort((a,b)=>(a.d||"").localeCompare(b.d||"")).slice(-12);
+}
+function activeMeds(){
+  const t=todayISO();
+  return state.events.filter(e=>e.type==="prescription"&&(e.ongoing===true||(e.endDate&&e.endDate>=t)));
+}
+function sparkline(vals,color){
+  if(vals.length<2)return "";
+  const w=168,h=40,pad=4,mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),rng=(mx-mn)||1;
+  const pts=vals.map((v,i)=>[pad+i*(w-2*pad)/(vals.length-1),h-pad-((v-mn)/rng)*(h-2*pad)]);
+  const d=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+  const last=pts[pts.length-1];
+  return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" width="'+w+'" height="'+h+'" style="color:'+color+'" aria-hidden="true">'+
+    '<path d="'+d+'" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="2.7" fill="currentColor"/></svg>';
+}
+function flagColor(f){return f==="critical"?"var(--crit)":(f==="high"||f==="low")?"var(--warn)":"var(--ok)";}
+
+/* ============================ render ============================ */
+function render(){/* initial shell already in DOM */ renderTop();}
+function renderAll(){renderTop();renderRail();renderMain();
+  if(state.openEventId){const e=state.events.find(x=>x.id===state.openEventId);if(e)renderDrawer(e);else closeDrawer();}
+}
+function renderTop(){
+  const t=document.documentElement.getAttribute("data-theme");
+  const dark=t?t==="dark":(window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches);
+  const exp=state.downloads&&isLive()?
+    '<button class="btn sm" data-act="export-json">Backup all (JSON)</button>'+
+    '<button class="btn sm" data-act="export-csv">This person (CSV)</button>':"";
+  $("#topActions").innerHTML=exp+
+    '<button class="icon-btn" data-act="theme" title="Switch theme" aria-label="Switch theme">'+(dark?"☀":"☾")+'</button>';
+}
+function renderRail(){
+  const rows=state.people.map(p=>{
+    const up=state.mode==="live"?0:(EX_EVENTS[p.id]||[]).filter(e=>e.type==="appointment"&&(e.datetime||"")>=nowMinISO()).length;
+    const dot=(p.id===state.currentId&&upcomingAppts().length)||up?'<span class="pdot" title="Upcoming appointment"></span>':"";
+    return '<button class="person-btn" data-act="person" data-id="'+esc(p.id)+'" aria-current="'+(p.id===state.currentId)+'">'+
+      '<span class="avatar">'+esc(initials(p.name))+'</span>'+
+      '<span><span class="pn">'+esc(p.name)+(p.example?' <span style="color:var(--faint);font-weight:600">· example</span>':"")+'</span><br><span class="pr">'+esc(p.relation||"")+'</span></span>'+dot+'</button>';
+  }).join("");
+  $("#rail").innerHTML='<h2>Family</h2>'+rows+
+    '<button class="btn ghost sm" style="justify-content:flex-start;margin-top:4px" data-act="add-person">＋ Add family member</button>'+
+    '<div class="rail-foot">Records save privately to your Claude account and sync to your other devices. This page can’t be shared publicly.</div>';
+}
+function renderMain(){
+  if(state.mode==="loading"){$("#main").innerHTML='<div class="loading">Loading records…</div>';return;}
+  const p=currentPerson();if(!p){$("#main").innerHTML="";return;}
+  const parts=[];
+
+  if(state.mode==="example"){
+    if(state.exampleReason==="nodb")
+      parts.push('<div class="banner warn"><span><b>Preview only.</b> Open this page from Claude (not a downloaded copy) to save real records. The examples below show how it works.</span></div>');
+    else
+      parts.push('<div class="banner"><span><b>These are example records</b> for a father on TB treatment with diabetes. Add your own family member to start — entries save automatically and privately.</span><span class="bx"><button class="btn sm primary" data-act="add-person">Add family member</button></span></div>');
+  }
+
+  const age=ageStr(p.dob);
+  const sub=[p.relation,age,p.bloodType,p.dob?"born "+fmtDate(p.dob):""].filter(Boolean).join(" · ");
+  const chips=[].concat(
+    (p.allergies||[]).filter(a=>a.name).map(a=>'<span class="chip alg" title="Allergy">⚠ '+esc(a.name)+(a.reaction?" — "+esc(a.reaction):"")+'</span>'),
+    (p.conditions||[]).filter(c=>c.name).map(c=>'<span class="chip cond">'+esc(c.name)+(c.status?' · '+esc(c.status):"")+'</span>')
+  ).join("");
+  parts.push('<section class="phead"><span class="avatar">'+esc(initials(p.name))+'</span>'+
+    '<div><h1>'+esc(p.name)+'</h1><div class="phead-sub">'+esc(sub||"—")+'</div>'+
+    (chips?'<div class="chips">'+chips+'</div>':"")+'</div>'+
+    '<div class="phead-actions"><button class="btn sm" data-act="edit-person">Edit profile</button></div></section>');
+  if((p.careTeam||[]).some(d=>d.name))
+    parts.push('<div class="careteam"><b>Care team:</b> '+(p.careTeam||[]).filter(d=>d.name).map(d=>esc(d.name)+(d.role?" ("+esc(d.role)+")":"")).join(" · ")+'</div>');
+  if(p.notes)parts.push('<div class="careteam">'+esc(p.notes)+'</div>');
+
+  parts.push(renderTiles());
+  const att=attentionItems();
+  if(att.length)parts.push('<section class="attention"><h3>Needs attention</h3><ul>'+
+    att.map(a=>'<li data-act="open-event" data-id="'+esc(a.id)+'" style="cursor:pointer"><b>'+esc(a.t)+'</b><span class="ad">'+esc(a.d)+'</span></li>').join("")+'</ul></section>');
+
+  const up=upcomingAppts();
+  if(up.length)parts.push('<div class="sec-head"><h2>Upcoming</h2></div><section class="appt-cards">'+
+    up.map(e=>'<div class="appt-card" data-act="open-event" data-id="'+esc(e.id)+'">'+
+      '<div class="aw">'+esc(fmtDateTime(e.datetime))+' · '+esc(relLabel(e.datetime))+'</div>'+
+      '<div class="at">'+esc(e.purpose||"Appointment")+'</div>'+
+      '<div class="as">'+esc([e.withWhom,e.facility].filter(Boolean).join(" · ")||"—")+'</div></div>').join("")+'</section>');
+
+  parts.push('<div class="sec-head"><h2>History</h2><button class="btn primary" data-act="add-record">＋ Add record</button></div>');
+  parts.push(renderFilters());
+  parts.push(renderTimeline());
+  $("#main").innerHTML=parts.join("");
+}
+function renderTiles(){
+  const tiles=[];
+  const up=upcomingAppts()[0];
+  if(up)tiles.push('<div class="tile tap" data-act="open-event" data-id="'+esc(up.id)+'"><span class="tl">Next appointment</span>'+
+    '<span class="tv">'+esc(relLabel(up.datetime))+'</span><span class="tsub">'+esc(fmtDateTime(up.datetime))+'<br>'+esc(trunc(up.purpose||"",40))+'</span></div>');
+  const a1c=latestA1c();
+  if(a1c)tiles.push('<div class="tile"><span class="tl">Latest HbA1c</span>'+
+    '<span class="tv">'+esc(a1c.v)+'%<span class="flagdot" style="background:'+flagColor(a1c.flag)+'"></span></span>'+
+    '<span class="tsub">'+esc(fmtDate(a1c.date))+' · target &lt; 7.0%</span></div>');
+  const gs=glucoseSeries();
+  if(gs.length){const l=gs[gs.length-1];
+    tiles.push('<div class="tile"><span class="tl">Blood glucose</span>'+
+      '<span class="tv">'+esc(l.v)+' <span style="font-size:12px;color:var(--muted)">mg/dL</span></span>'+
+      '<span class="tsub">'+esc((l.ctx?l.ctx+" · ":"")+fmtDate(l.d))+'</span>'+sparkline(gs.map(x=>x.v),"var(--t-vitals)")+'</div>');
+  }
+  const am=activeMeds();
+  if(am.length)tiles.push('<div class="tile tap" data-act="filter" data-id="prescription"><span class="tl">Active medications</span>'+
+    '<span class="tv">'+am.length+'</span><span class="tsub">'+esc(trunc(am.map(m=>m.drug).join(", "),46))+'</span></div>');
+  if(!tiles.length)return "";
+  return '<section class="tiles">'+tiles.join("")+'</section>';
+}
+function renderFilters(){
+  const counts={all:state.events.length};
+  TYPE_ORDER.forEach(t=>counts[t]=state.events.filter(e=>e.type===t).length);
+  const btn=(k,label)=>'<button data-act="filter" data-id="'+k+'" aria-pressed="'+(state.filter===k)+'">'+esc(label)+
+    (counts[k]?'<span class="c">'+counts[k]+'</span>':"")+'</button>';
+  return '<div class="filters">'+btn("all","All")+
+    TYPE_ORDER.filter(t=>counts[t]).map(t=>btn(t,TYPES[t].tag)).join("")+'</div>';
+}
+function renderTimeline(){
+  let evs=state.events.slice().sort((a,b)=>sortKey(b).localeCompare(sortKey(a)));
+  if(state.filter!=="all")evs=evs.filter(e=>e.type===state.filter);
+  if(!evs.length)return '<div class="empty"><h3>No records yet</h3><p>Add the first consultation, lab result, prescription or appointment for '+esc(currentPerson().name)+'.</p><button class="btn primary" style="margin-top:12px" data-act="add-record">＋ Add record</button></div>';
+  return '<div class="timeline">'+evs.map(e=>{
+    const T=TYPES[e.type],pill=statusPill(e),k=sortKey(e);
+    const y=String(k).slice(0,4),md=fmtDate(k).split(" ").slice(1).join(" ");
+    return '<button class="tl-row" data-act="open-event" data-id="'+esc(e.id)+'">'+
+      '<span class="tl-date">'+esc(y)+'<b>'+esc(md)+'</b></span>'+
+      '<span><span class="tl-l1"><span class="tag" style="background:'+T.color+'">'+T.tag+'</span>'+
+      '<span class="tl-title">'+esc(eventTitle(e))+'</span></span>'+
+      (eventLine2(e)?'<span class="tl-l2">'+esc(eventLine2(e))+'</span>':"")+'</span>'+
+      (pill?'<span class="pill '+pill.cls+'">'+esc(pill.text)+'</span>':'<span></span>')+
+      '</button>';
+  }).join("")+'</div>';
+}
+
+/* ============================ drawer ============================ */
+function openDrawer(id){state.openEventId=id;const e=state.events.find(x=>x.id===id);if(e)renderDrawer(e);}
+function closeDrawer(){state.openEventId=null;$("#drawer").hidden=true;$("#scrim").hidden=true;$("#drawer").innerHTML="";}
+function renderDrawer(e){
+  const T=TYPES[e.type],sc=SCHEMAS[e.type]||[];
+  const rows=[];
+  sc.forEach(f=>{
+    if(f.k==="results"||f.t==="group")return;
+    if(f.t==="checkbox"){if(e[f.k])rows.push(frow(f.l,"Yes"));return;}
+    const v=e[f.k];if(v==null||v==="")return;
+    rows.push(frow(f.l,f.t==="datetime-local"?fmtDateTime(v):(f.t==="date"?fmtDate(v):v)));
+  });
+  let resHtml="";
+  if(e.type==="lab"&&(e.results||[]).length){
+    resHtml='<div class="frow"><span class="fk">Results</span><span class="fv"><table class="res-table"><thead><tr><th>Test</th><th>Result</th><th>Reference</th><th>Flag</th></tr></thead><tbody>'+
+      e.results.map(r=>'<tr><td>'+esc(r.analyte||"")+'</td><td>'+esc((r.value||"")+(r.unit?" "+r.unit:""))+'</td><td>'+esc(r.ref||"")+'</td><td class="fl fl-'+esc(r.flag||"normal")+'">'+esc(r.flag||"")+'</td></tr>').join("")+
+      '</tbody></table></span></div>';
+  }
+  const atts=e.attachments||[];
+  const attHtml='<div class="frow"><span class="fk">Attachments</span><span class="fv"><div class="att" id="attList">'+
+    (atts.length?atts.map(a=>attRow(a)).join(""):'<span style="color:var(--faint)">None yet</span>')+'</div>'+
+    '<div class="att-add"><button class="btn sm" data-act="att-file">＋ Attach a file</button><button class="btn sm" data-act="att-ref">＋ Add a reference</button></div>'+
+    '<div id="refFormSlot"></div></span></div>';
+
+  $("#drawer").innerHTML=
+    '<div class="dw-head"><span class="tag" style="background:'+T.color+';align-self:center">'+T.tag+'</span>'+
+    '<h2>'+esc(eventTitle(e))+'</h2><button class="icon-btn" data-act="close-drawer" aria-label="Close">✕</button></div>'+
+    '<div class="dw-body"><div class="dw-meta">'+esc(T.label)+' · '+esc(fmtDate(sortKey(e)))+
+      (e.updatedAt?' · edited '+new Date(e.updatedAt).toLocaleDateString():"")+'</div>'+
+    rows.join("")+resHtml+attHtml+
+    '<div style="display:flex;gap:8px;margin-top:22px"><button class="btn" data-act="edit-record">Edit</button>'+
+      '<button class="btn danger" data-act="del-record">Delete</button></div>'+
+    '</div>';
+  $("#drawer").hidden=false;$("#scrim").hidden=false;
+}
+function frow(k,v){return '<div class="frow"><span class="fk">'+esc(k)+'</span><span class="fv">'+esc(v)+'</span></div>';}
+function attRow(a){
+  const ic=a.kind==="image"?"IMG":a.kind==="pdf"?"PDF":a.kind==="reference"?"REF":"FILE";
+  const act=a.hasFile?(a.kind==="image"?'<button class="btn sm" data-act="att-view" data-id="'+esc(a.id)+'">View</button>':"")+
+    '<button class="btn sm" data-act="att-save" data-id="'+esc(a.id)+'">Save</button>':"";
+  return '<div class="att-item"><span class="ai-ic">'+ic+'</span><span class="ai-b"><span class="ai-n">'+esc(a.name||"Attachment")+'</span>'+
+    (a.refLocation?'<span class="ai-l">Kept at: '+esc(a.refLocation)+'</span>':"")+
+    (a.caption?'<span class="ai-l">'+esc(a.caption)+'</span>':"")+'</span>'+
+    '<span class="ai-x">'+act+'<button class="btn sm danger" data-act="att-del" data-id="'+esc(a.id)+'">✕</button></span></div>';
+}
+
+/* ============================ forms ============================ */
+function fieldHtml(f,val){
+  const req=f.req?' <span style="color:var(--crit)">*</span>':"";
+  const name='name="'+f.k+'"';
+  let inner;
+  if(f.t==="textarea")inner='<textarea '+name+' placeholder="'+esc(f.ph||"")+'">'+esc(val||"")+'</textarea>';
+  else if(f.t==="select"){
+    inner='<select '+name+'>'+f.opts.map(o=>'<option value="'+esc(o)+'"'+((val||f.def||"")===o?" selected":"")+'>'+esc(o||"—")+'</option>').join("")+'</select>';
+  }
+  else if(f.t==="checkbox")
+    return '<label class="fld cb"><input type="checkbox" '+name+(val?" checked":"")+'><span>'+esc(f.l)+'</span></label>';
+  else inner='<input type="'+f.t+'" '+name+' value="'+esc(val==null?"":val)+'" placeholder="'+esc(f.ph||"")+'">';
+  return '<label class="fld'+(f.half?" half":"")+'" data-fk="'+f.k+'"><span>'+esc(f.l)+req+'</span>'+inner+'</label>';
+}
+function groupRowHtml(f,item){
+  item=item||{};
+  return '<div class="grp-row"><button type="button" class="grp-del" data-act="grp-del" aria-label="Remove">✕</button>'+
+    '<div class="grid2">'+f.fields.map(sf=>fieldHtml(sf,item[sf.k])).join("")+'</div></div>';
+}
+function schemaFormHtml(schema,data){
+  data=data||{};
+  const out=[];
+  let buf=[];
+  const flush=()=>{if(buf.length){out.push('<div class="grid2">'+buf.join("")+'</div>');buf=[];}};
+  schema.forEach(f=>{
+    if(f.t==="group"){
+      flush();
+      const items=(data[f.k]&&data[f.k].length)?data[f.k]:[];
+      out.push('<div class="fld"><span>'+esc(f.l)+'</span><div class="grp" data-group="'+f.k+'">'+
+        items.map(it=>groupRowHtml(f,it)).join("")+'</div>'+
+        '<button type="button" class="grp-add" data-act="grp-add" data-group="'+f.k+'">＋ Add '+esc(f.singular||"row")+'</button></div>');
+    }else if(f.half){buf.push(fieldHtml(f,data[f.k]));}
+    else{flush();out.push(fieldHtml(f,data[f.k]));}
+  });
+  flush();
+  return out.join("");
+}
+function readSchemaForm(root,schema){
+  const out={};
+  schema.forEach(f=>{
+    if(f.t==="group"){
+      out[f.k]=[];
+      const box=root.querySelector('[data-group="'+f.k+'"]');
+      if(box)$$(".grp-row",box).forEach(row=>{
+        const it={};let any=false;
+        f.fields.forEach(sf=>{const el=row.querySelector('[name="'+sf.k+'"]');const v=el?el.value.trim():"";it[sf.k]=v;if(v)any=true;});
+        if(any)out[f.k].push(it);
+      });
+    }else if(f.t==="checkbox"){const el=root.querySelector('[name="'+f.k+'"]');out[f.k]=!!(el&&el.checked);}
+    else{const el=root.querySelector('[name="'+f.k+'"]');out[f.k]=el?el.value.trim():"";}
+  });
+  return out;
+}
+function validate(root,schema){
+  let ok=true;
+  schema.forEach(f=>{
+    if(!f.req)return;
+    const el=root.querySelector('[name="'+f.k+'"]');
+    const wrap=el&&el.closest(".fld");
+    if(el&&!el.value.trim()){ok=false;if(wrap)wrap.classList.add("invalid");}
+    else if(wrap)wrap.classList.remove("invalid");
+  });
+  return ok;
+}
+
+/* ============================ modal ============================ */
+function openModal(html){$("#modalRoot").innerHTML='<div class="modal">'+html+'</div>';$("#modalRoot").hidden=false;}
+function closeModal(){$("#modalRoot").hidden=true;$("#modalRoot").innerHTML="";}
+
+function personModal(existing){
+  const d=existing||{relation:"Father"};
+  openModal(
+    '<div class="modal-head"><h2>'+(existing?"Edit profile":"Add family member")+'</h2><button class="icon-btn" data-act="close-modal">✕</button></div>'+
+    '<div class="modal-body" id="personForm">'+schemaFormHtml(PERSON_SCHEMA,d)+'</div>'+
+    '<div class="modal-foot"><button class="btn" data-act="close-modal">Cancel</button>'+
+      '<button class="btn primary" data-act="save-person" data-id="'+esc(existing?existing.id:"")+'">Save</button></div>'
+  );
+}
+function typePickerModal(){
+  openModal(
+    '<div class="modal-head"><h2>Add a record</h2><button class="icon-btn" data-act="close-modal">✕</button></div>'+
+    '<div class="modal-body"><p style="margin:0 0 14px;color:var(--muted)">Choose the kind of record for <b>'+esc(currentPerson().name)+'</b>.</p>'+
+    '<div class="typegrid">'+TYPE_ORDER.map(t=>{const T=TYPES[t];
+      return '<button data-act="pick-type" data-id="'+t+'"><span class="tag tg-tag" style="background:'+T.color+'">'+T.tag+'</span>'+
+        '<span class="tt">'+esc(T.label)+'</span><span class="td">'+esc(T.blurb)+'</span></button>';}).join("")+'</div></div>'
+  );
+}
+function recordModal(type,existing){
+  const T=TYPES[type],sc=SCHEMAS[type];
+  const d=existing?Object.assign({},existing):{};
+  if(!existing){
+    if(sc.some(f=>f.k==="date"))d.date=todayISO();
+    if(sc.some(f=>f.k==="datetime"))d.datetime=nowMinISO();
+  }
+  openModal(
+    '<div class="modal-head"><span class="tag" style="background:'+T.color+';align-self:center">'+T.tag+'</span><h2>'+(existing?"Edit ":"New ")+T.label.toLowerCase()+'</h2><button class="icon-btn" data-act="close-modal">✕</button></div>'+
+    '<div class="modal-body" id="recForm" data-type="'+type+'">'+schemaFormHtml(sc,d)+'</div>'+
+    '<div class="modal-foot"><button class="btn" data-act="close-modal">Cancel</button>'+
+      '<button class="btn primary" data-act="save-record" data-type="'+type+'" data-id="'+esc(existing?existing.id:"")+'">Save record</button></div>'
+  );
+}
+
+/* ============================ writes ============================ */
+async function savePerson(id){
+  const root=$("#personForm");
+  if(!validate(root,PERSON_SCHEMA)){toast("Add a name first.");return;}
+  const data=readSchemaForm(root,PERSON_SCHEMA);
+  if(!state.db){toast("Open this page inside Claude to save.");return;}
+  try{
+    if(id){await state.db.doc("people/"+id).set(Object.assign({createdAt:(state.people.find(p=>p.id===id)||{}).createdAt||Date.now()},data));}
+    else{const ref=await state.db.collection("people").add(Object.assign({createdAt:Date.now()},data));state.currentId=ref.id;}
+    closeModal();toast(id?"Profile updated.":"Family member added.");
+  }catch(err){toast("Could not save: "+(err&&err.code||err.message||"error"));}
+}
+async function saveRecord(type,id){
+  const root=$("#recForm"),sc=SCHEMAS[type];
+  if(!validate(root,sc)){toast("Fill in the required fields (marked *).");return;}
+  if(!isLive()){toast(state.db?"That’s example data — add your own family member first.":"Open this page inside Claude to save records.");return;}
+  const data=readSchemaForm(root,sc);
+  const date=(type==="appointment"||type==="emergency")?((data.datetime||"").slice(0,10)||todayISO()):(data.date||todayISO());
+  const pid=state.currentId;
+  const prev=state.events.find(e=>e.id===id)||{};
+  const body=Object.assign({},data,{type:type,date:date,attachments:prev.attachments||[],createdAt:prev.createdAt||Date.now(),updatedAt:Date.now()});
+  try{
+    if(id)await state.db.doc("people/"+pid+"/events/"+id).set(body);
+    else{const ref=await state.db.collection("people/"+pid+"/events").add(body);id=ref.id;}
+    closeModal();openDrawer(id);toast("Record saved.");
+  }catch(err){toast("Could not save: "+(err&&err.code||err.message||"error"));}
+}
+function confirmModal(msg){
+  return new Promise(res=>{
+    const o=document.createElement("div");
+    o.style.cssText="position:fixed;inset:0;z-index:95;background:rgba(12,16,14,.5);display:grid;place-items:center;padding:20px";
+    o.innerHTML='<div class="modal" style="max-width:400px"><div class="modal-body"><p style="margin:0;font-weight:600">'+esc(msg)+'</p></div>'+
+      '<div class="modal-foot"><button class="btn" data-c="0">Cancel</button>'+
+      '<button class="btn" style="border-color:var(--crit);color:var(--crit)" data-c="1">Delete</button></div></div>';
+    o.addEventListener("click",e=>{const b=e.target.closest("[data-c]");if(!b)return;o.remove();res(b.dataset.c==="1");});
+    document.body.appendChild(o);
+  });
+}
+async function deleteRecord(id){
+  if(!isLive()){toast("Example records can’t be changed.");return;}
+  if(!await confirmModal("Delete this record permanently? This can’t be undone."))return;
+  try{
+    const pid=state.currentId;
+    const ev=state.events.find(e=>e.id===id);
+    for(const a of (ev&&ev.attachments||[]))if(a.hasFile){try{await state.db.doc("people/"+pid+"/events/"+id+"/blobs/"+a.id).delete();}catch(e){}}
+    await state.db.doc("people/"+pid+"/events/"+id).delete();
+    closeDrawer();toast("Record deleted.");
+  }catch(err){toast("Could not delete: "+(err&&err.code||"error"));}
+}
+
+/* ============================ attachments ============================ */
+const MAXB=232*1024;
+function readDataURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error("Could not read the file"));r.readAsDataURL(file);});}
+function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error("Could not read the image"));im.src=src;});}
+async function compressImage(file){
+  const img=await loadImg(await readDataURL(file));
+  for(const dim of [1500,1200,1000,820,680]){
+    for(const q of [0.75,0.62,0.5,0.4]){
+      const s=Math.min(1,dim/Math.max(img.width,img.height));
+      const w=Math.max(1,Math.round(img.width*s)),h=Math.max(1,Math.round(img.height*s));
+      const c=document.createElement("canvas");c.width=w;c.height=h;
+      const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);
+      const out=c.toDataURL("image/jpeg",q);
+      if(out.length*0.75<=MAXB)return out;
+    }
+  }
+  throw new Error("This image stays too large even after shrinking. Photograph it at lower resolution, or add it as a reference note.");
+}
+async function processFile(file){
+  if(/^image\//.test(file.type))return {kind:"image",dataUri:await compressImage(file)};
+  const kind=file.type==="application/pdf"?"pdf":"file";
+  if(file.size<=MAXB)return {kind:kind,dataUri:await readDataURL(file)};
+  throw new Error('"'+file.name+'" is '+(file.size/1048576).toFixed(1)+" MB. The app stores files up to ~0.23 MB — add it as a reference note (where the original is kept) instead.");
+}
+function dataURItoBlob(uri){
+  const parts=uri.split(","),mime=(parts[0].match(/:(.*?);/)||[])[1]||"application/octet-stream";
+  const bin=atob(parts[1]),arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+  return new Blob([arr],{type:mime});
+}
+async function attachFile(file){
+  const id=state.openEventId,pid=state.currentId;
+  if(!isLive()||!id){toast("Add your own family member first to attach files.");return;}
+  toast("Processing "+file.name+"…");
+  try{
+    const {kind,dataUri}=await processFile(file);
+    const attId=uid();
+    await state.db.doc("people/"+pid+"/events/"+id+"/blobs/"+attId).set({dataUri:dataUri,name:file.name});
+    const ev=state.events.find(e=>e.id===id);
+    const atts=(ev.attachments||[]).concat([{id:attId,name:file.name,kind:kind,hasFile:true}]);
+    await state.db.doc("people/"+pid+"/events/"+id).update({attachments:atts,updatedAt:Date.now()});
+    toast("File attached.");
+  }catch(err){toast(err.message||"Could not attach the file.");}
+}
+async function addReference(name,loc){
+  const id=state.openEventId,pid=state.currentId;
+  if(!isLive()||!id){toast("Add your own family member first.");return;}
+  if(!name.trim()){toast("Give the reference a name.");return;}
+  try{
+    const ev=state.events.find(e=>e.id===id);
+    const atts=(ev.attachments||[]).concat([{id:uid(),name:name.trim(),kind:"reference",refLocation:loc.trim(),hasFile:false}]);
+    await state.db.doc("people/"+pid+"/events/"+id).update({attachments:atts,updatedAt:Date.now()});
+    toast("Reference added.");
+  }catch(err){toast("Could not add: "+(err&&err.code||"error"));}
+}
+async function removeAttachment(attId){
+  const id=state.openEventId,pid=state.currentId;
+  if(!isLive()||!id)return;
+  try{
+    const ev=state.events.find(e=>e.id===id);
+    const a=(ev.attachments||[]).find(x=>x.id===attId);
+    if(a&&a.hasFile){try{await state.db.doc("people/"+pid+"/events/"+id+"/blobs/"+attId).delete();}catch(e){}}
+    await state.db.doc("people/"+pid+"/events/"+id).update({attachments:(ev.attachments||[]).filter(x=>x.id!==attId),updatedAt:Date.now()});
+    toast("Attachment removed.");
+  }catch(err){toast("Could not remove: "+(err&&err.code||"error"));}
+}
+async function getBlob(attId){
+  const snap=await state.db.doc("people/"+state.currentId+"/events/"+state.openEventId+"/blobs/"+attId).get();
+  return snap.exists?snap.data():null;
+}
+async function viewAttachment(attId){
+  try{const b=await getBlob(attId);if(!b){toast("File not found.");return;}
+    const v=document.createElement("div");v.className="imgview";v.innerHTML='<img alt="attachment" src="'+b.dataUri+'">';
+    v.addEventListener("click",()=>v.remove());document.body.appendChild(v);
+  }catch(err){toast("Could not open the file.");}
+}
+async function saveAttachment(attId){
+  try{
+    const b=await getBlob(attId);if(!b){toast("File not found.");return;}
+    if(!state.downloads){const w=window.open();if(w)w.document.write('<img src="'+b.dataUri+'" style="max-width:100%">');else toast("Saving files isn’t available in this view.");return;}
+    await state.downloads.save({filename:b.name||("attachment-"+attId),data:dataURItoBlob(b.dataUri)});
+  }catch(err){if(err&&err.code!=="declined")toast("Could not save: "+(err&&err.code||"error"));}
+}
+
+/* ============================ export ============================ */
+async function exportJSON(){
+  if(!state.downloads){toast("Saving files isn’t available in this view.");return;}
+  if(!isLive()){toast("Add your own records first, then you can back them up.");return;}
+  toast("Preparing backup…");
+  try{
+    const dump={app:"Family Health Ledger",exportedAt:new Date().toISOString(),people:[]};
+    for(const p of state.people){
+      const evs=await state.db.collection("people/"+p.id+"/events").orderBy("date","desc").get();
+      const events=[];
+      for(const ed of evs.docs){
+        const ev=Object.assign({id:ed.id},ed.data());
+        const bl=await state.db.collection("people/"+p.id+"/events/"+ed.id+"/blobs").get();
+        if(bl.docs.length){ev._files={};bl.docs.forEach(bd=>ev._files[bd.id]=bd.data().dataUri);}
+        events.push(ev);
+      }
+      dump.people.push(Object.assign({},p,{events:events}));
+    }
+    await state.downloads.save({filename:"family-health-ledger-"+todayISO()+".json",data:JSON.stringify(dump,null,2)});
+  }catch(err){if(err&&err.code!=="declined")toast("Backup failed: "+(err&&err.code||err.message||"error"));}
+}
+async function exportCSV(){
+  if(!state.downloads){toast("Saving files isn’t available in this view.");return;}
+  const p=currentPerson();
+  const rows=[["Date","Type","Title","Facility","Doctor","Status","Details"]];
+  state.events.slice().sort((a,b)=>sortKey(b).localeCompare(sortKey(a))).forEach(e=>{
+    rows.push([sortKey(e).slice(0,16),TYPES[e.type].label,eventTitle(e),e.facility||e.withWhom||"",
+      e.doctor||e.prescriber||e.withWhom||"",e.status||e.disposition||(e.ongoing?"ongoing":""),
+      eventLine2(e)+(e.impression?" — "+e.impression:"")+(e.plan?" — Plan: "+e.plan:"")]);
+  });
+  const csv=rows.map(r=>r.map(c=>'"'+String(c==null?"":c).replace(/"/g,'""')+'"').join(",")).join("\r\n");
+  try{await state.downloads.save({filename:(p.name||"person").replace(/[^\w]+/g,"-").toLowerCase()+"-records-"+todayISO()+".csv",data:csv});}
+  catch(err){if(err&&err.code!=="declined")toast("Export failed: "+(err&&err.code||"error"));}
+}
+
+/* ============================ events ============================ */
+const fileInput=document.createElement("input");fileInput.type="file";fileInput.accept="image/*,application/pdf";fileInput.style.display="none";
+document.body.appendChild(fileInput);
+fileInput.addEventListener("change",()=>{const f=fileInput.files[0];if(f)attachFile(f);fileInput.value="";});
+
+document.addEventListener("click",ev=>{
+  const t=ev.target.closest("[data-act]");if(!t)return;
+  const act=t.dataset.act,id=t.dataset.id;
+  switch(act){
+    case "theme":toggleTheme();break;
+    case "person":if(id!==state.currentId){state.currentId=id;state.filter="all";closeDrawer();
+      if(isLive())subscribeEvents();else state.events=(EX_EVENTS[id]||[]).slice();renderAll();}break;
+    case "add-person":if(!state.db){toast("Open this page inside Claude to save records.");break;}personModal(null);break;
+    case "edit-person":personModal(currentPerson());break;
+    case "save-person":savePerson(id);break;
+    case "add-record":typePickerModal();break;
+    case "pick-type":recordModal(id,null);break;
+    case "save-record":saveRecord(t.dataset.type,id);break;
+    case "open-event":openDrawer(id);break;
+    case "close-drawer":closeDrawer();break;
+    case "close-modal":closeModal();break;
+    case "edit-record":{const e=state.events.find(x=>x.id===state.openEventId);if(e)recordModal(e.type,e);break;}
+    case "del-record":deleteRecord(state.openEventId);break;
+    case "filter":state.filter=id;renderMain();break;
+    case "export-json":exportJSON();break;
+    case "export-csv":exportCSV();break;
+    case "att-file":fileInput.click();break;
+    case "att-ref":{
+      const slot=$("#refFormSlot");
+      if(slot.innerHTML){slot.innerHTML="";break;}
+      slot.innerHTML='<div class="refform"><label class="fld"><span>What is it</span><input id="refName" placeholder="e.g. Official lab result (PDF), X-ray plate"></label>'+
+        '<label class="fld"><span>Where the original is kept</span><input id="refLoc" placeholder="e.g. blue folder / hospital portal"></label>'+
+        '<div style="display:flex;gap:8px"><button class="btn sm primary" data-act="att-ref-save">Add reference</button>'+
+        '<button class="btn sm" data-act="att-ref-cancel">Cancel</button></div></div>';
+      break;
+    }
+    case "att-ref-save":addReference($("#refName").value||"",$("#refLoc").value||"").then(()=>{$("#refFormSlot").innerHTML="";});break;
+    case "att-ref-cancel":$("#refFormSlot").innerHTML="";break;
+    case "att-view":viewAttachment(id);break;
+    case "att-save":saveAttachment(id);break;
+    case "att-del":removeAttachment(id);break;
+    case "grp-add":{
+      const box=t.parentElement.querySelector('[data-group="'+t.dataset.group+'"]');
+      const schema=box.closest("#personForm")?PERSON_SCHEMA:SCHEMAS[$("#recForm").dataset.type];
+      const f=schema.find(x=>x.k===t.dataset.group);
+      box.insertAdjacentHTML("beforeend",groupRowHtml(f,{}));
+      break;
+    }
+    case "grp-del":t.closest(".grp-row").remove();break;
+  }
+});
+$("#scrim").addEventListener("click",closeDrawer);
+$("#modalRoot").addEventListener("click",e=>{if(e.target.id==="modalRoot")closeModal();});
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Escape")return;
+  if(!$("#modalRoot").hidden)closeModal();
+  else if(!$("#drawer").hidden)closeDrawer();
+  const iv=$(".imgview");if(iv)iv.remove();
+});
+</script>
