@@ -458,6 +458,7 @@ const state={session:null,me:null,people:[],events:[],currentId:null,filter:"all
   openEventId:null,loaded:false,editPersonId:null,gateView:null,gateMsg:"",eventsReq:0,_email:""};
 let channels=[];
 let shownFor=null, routing=false;
+function isAdmin(){return !!(state.me&&state.me.role==="admin");}
 
 /* ============================ boot ============================ */
 bootTheme();
@@ -588,6 +589,7 @@ async function savePerson(id){
 }
 async function deletePerson(id){
   if(!id)return;
+  if(!isAdmin()){toast("Only an admin can delete a family member.");return;}
   if(!await confirmModal("Delete this family member and ALL of their records and files? This cannot be undone.","Delete"))return;
   try{
     const {data:evs}=await sb.from("events").select("attachments").eq("person_id",id);
@@ -620,6 +622,7 @@ async function saveRecord(type,id){
   }catch(err){toast("Could not save: "+(err.message||err));}
 }
 async function deleteRecord(id){
+  if(!isAdmin()){toast("Only an admin can delete records.");return;}
   if(!await confirmModal("Delete this record permanently? This can’t be undone.","Delete"))return;
   try{
     const ev=state.events.find(e=>e.id===id);
@@ -664,11 +667,13 @@ async function memberAdd(){
   membersModal();
 }
 async function memberRole(id,role){
+  if(!isAdmin()){toast("Only an admin can change roles.");return;}
   const {error}=await sb.from("members").update({role:role}).eq("id",id);
   if(error){toast("Could not update: "+error.message);return;}
   membersModal();
 }
 async function memberDel(id){
+  if(!isAdmin()){toast("Only an admin can remove members.");return;}
   const {data}=await sb.from("members").select("*");
   const target=(data||[]).find(m=>m.id===id);
   if(target&&target.role==="admin"&&(data||[]).filter(m=>m.role==="admin").length<=1){toast("You can’t remove the only admin.");return;}
@@ -1016,7 +1021,7 @@ function renderDrawer(e){
     rows.join("")+resHtml+attHtml+
     '<div style="display:flex;gap:8px;margin-top:22px;flex-wrap:wrap"><button class="btn" data-act="edit-record">Edit</button>'+
       '<button class="btn" data-act="print-record">Print / PDF</button>'+
-      '<button class="btn danger" data-act="del-record">Delete</button></div>'+
+      (isAdmin()?'<button class="btn danger" data-act="del-record">Delete</button>':"")+'</div>'+
     '</div>';
   $("#drawer").hidden=false;$("#scrim").hidden=false;
 }
@@ -1105,7 +1110,7 @@ function personModal(existing){
   openModal(
     '<div class="modal-head"><h2>'+(existing?"Edit profile":"Add family member")+'</h2><button class="icon-btn" data-act="close-modal" aria-label="Close">✕</button></div>'+
     '<div class="modal-body" id="personForm">'+schemaFormHtml(PERSON_SCHEMA,d)+'</div>'+
-    '<div class="modal-foot">'+(existing?'<button class="btn danger foot-left" data-act="del-person">Delete profile</button>':"")+
+    '<div class="modal-foot">'+(existing&&isAdmin()?'<button class="btn danger foot-left" data-act="del-person">Delete profile</button>':"")+
       '<button class="btn" data-act="close-modal">Cancel</button>'+
       '<button class="btn primary" data-act="save-person" data-id="'+esc(existing?existing.id:"")+'">Save</button></div>'
   );

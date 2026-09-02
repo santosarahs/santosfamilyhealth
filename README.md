@@ -40,9 +40,10 @@ See **[SETUP.md](SETUP.md)** for the full walkthrough. In short:
 ## Access model
 
 Everyone the admin invites can view and edit **all** family members'
-records — it is a shared household ledger. Only admins can manage the
-members list. Anyone whose email isn't in `members` is stopped at the
-sign‑in screen.
+records — it is a shared household ledger. **Deleting** a record or a
+family‑member profile, and managing the members list, are **admin‑only**
+(enforced by row‑level security, not just the UI). Anyone whose email
+isn't in `members` is stopped at the sign‑in screen.
 
 ### Audit log
 

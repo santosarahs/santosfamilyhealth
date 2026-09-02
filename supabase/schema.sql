@@ -92,7 +92,7 @@ drop policy if exists people_delete on public.people;
 create policy people_select on public.people for select to authenticated using (public.is_member());
 create policy people_insert on public.people for insert to authenticated with check (public.is_member());
 create policy people_update on public.people for update to authenticated using (public.is_member()) with check (public.is_member());
-create policy people_delete on public.people for delete to authenticated using (public.is_member());
+create policy people_delete on public.people for delete to authenticated using (public.is_admin());  -- admin only
 
 drop policy if exists events_select on public.events;
 drop policy if exists events_insert on public.events;
@@ -101,7 +101,7 @@ drop policy if exists events_delete on public.events;
 create policy events_select on public.events for select to authenticated using (public.is_member());
 create policy events_insert on public.events for insert to authenticated with check (public.is_member());
 create policy events_update on public.events for update to authenticated using (public.is_member()) with check (public.is_member());
-create policy events_delete on public.events for delete to authenticated using (public.is_member());
+create policy events_delete on public.events for delete to authenticated using (public.is_admin());  -- admin only
 
 -- ---------- storage bucket for attachments ----------
 insert into storage.buckets (id, name, public)
