@@ -16,7 +16,7 @@
   --primary:#0E7C6B; --primary-ink:#0A5B4F; --primary-soft:#DCEBE6;
   --ok:#3A7D44; --warn:#966011; --crit:#B23B3B; --info:#3B6EA5;
   --t-appt:#3B6EA5; --t-consult:#0E7C6B; --t-lab:#7B5EA8; --t-rx:#3A7D44;
-  --t-er:#B23B3B; --t-vitals:#966011; --t-vax:#2C8299; --t-note:#79837B;
+  --t-er:#B23B3B; --t-vitals:#966011; --t-vax:#2C8299; --t-note:#79837B; --t-admit:#9A5528;
   --shadow:0 1px 2px rgba(28,36,34,.05), 0 10px 28px -14px rgba(28,36,34,.18);
   --radius:11px;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
@@ -30,7 +30,7 @@
     --primary:#3FB3A1; --primary-ink:#8FD8CD; --primary-soft:#173430;
     --ok:#5FB56B; --warn:#D69A46; --crit:#E0736F; --info:#6FA0D0;
     --t-appt:#6FA0D0; --t-consult:#3FB3A1; --t-lab:#A98FD6; --t-rx:#5FB56B;
-    --t-er:#E0736F; --t-vitals:#D69A46; --t-vax:#5FB0C6; --t-note:#8A938D;
+    --t-er:#E0736F; --t-vitals:#D69A46; --t-vax:#5FB0C6; --t-note:#8A938D; --t-admit:#CE8A5C;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 14px 32px -16px rgba(0,0,0,.65);
   }
 }
@@ -298,12 +298,13 @@ const TYPES={
   consultation:{tag:"CONSULT",label:"Consultation",color:"var(--t-consult)",blurb:"A doctor visit with findings & plan"},
   lab:{tag:"LAB",label:"Laboratory",color:"var(--t-lab)",blurb:"Blood work, imaging, sputum, pathology"},
   prescription:{tag:"RX",label:"Prescription",color:"var(--t-rx)",blurb:"A medication that was prescribed"},
-  emergency:{tag:"ER",label:"Emergency",color:"var(--t-er)",blurb:"An ER visit or admission"},
+  emergency:{tag:"ER",label:"Emergency",color:"var(--t-er)",blurb:"An ER visit (not admitted)"},
+  confinement:{tag:"ADMIT",label:"Confinement",color:"var(--t-admit)",blurb:"A hospital admission / in-patient stay"},
   vitals:{tag:"VITALS",label:"Vitals & readings",color:"var(--t-vitals)",blurb:"Glucose, blood pressure, weight"},
   immunization:{tag:"VAX",label:"Immunization",color:"var(--t-vax)",blurb:"A vaccine or booster given"},
   note:{tag:"NOTE",label:"History / note",color:"var(--t-note)",blurb:"Diagnosis history, surgery, free notes"}
 };
-const TYPE_ORDER=["appointment","consultation","lab","prescription","emergency","vitals","immunization","note"];
+const TYPE_ORDER=["appointment","consultation","lab","prescription","emergency","confinement","vitals","immunization","note"];
 
 const PERSON_SCHEMA=[
   {k:"name",l:"Full name",t:"text",req:true},
@@ -379,6 +380,20 @@ const SCHEMAS={
     {k:"dischargeDate",l:"Discharge date",t:"date",half:true},
     {k:"doctor",l:"Attending doctor",t:"text",half:true},
     {k:"cost",l:"Cost",t:"text",half:true}
+  ],
+  confinement:[
+    {k:"admitDate",l:"Admission date",t:"date",req:true,half:true},
+    {k:"dischargeDate",l:"Discharge date",t:"date",half:true},
+    {k:"facility",l:"Hospital",t:"text",half:true},
+    {k:"ward",l:"Ward / room",t:"text",ph:"e.g. Medical Ward, Rm 512",half:true},
+    {k:"reason",l:"Reason for admission",t:"text",ph:"e.g. Community-acquired pneumonia"},
+    {k:"attendingDoctor",l:"Attending doctor",t:"text",half:true},
+    {k:"admittedFrom",l:"Admitted via",t:"select",opts:["","ER","clinic / referral","direct admission","transfer from another hospital"],half:true},
+    {k:"summary",l:"Summary of what happened",t:"textarea",ph:"Course in hospital — what was found, treatment and procedures done, response, complications, outcome."},
+    {k:"procedures",l:"Procedures / operations",t:"textarea"},
+    {k:"dischargeDiagnosis",l:"Discharge diagnosis",t:"textarea"},
+    {k:"dischargeInstructions",l:"Discharge instructions / follow-up",t:"textarea",ph:"Home meds, diet, activity, follow-up appointments, when to return."},
+    {k:"cost",l:"Total cost",t:"text",half:true}
   ],
   vitals:[
     {k:"date",l:"Date",t:"date",req:true,half:true},
@@ -550,7 +565,9 @@ async function saveRecord(type,id){
   const root=$("#recForm"),sc=SCHEMAS[type];
   if(!validate(root,sc)){toast("Fill in the required fields (marked *).");return;}
   const data=readSchemaForm(root,sc);
-  const date=(type==="appointment"||type==="emergency")?((data.datetime||"").slice(0,10)||todayISO()):(data.date||todayISO());
+  const date=(type==="appointment"||type==="emergency")?((data.datetime||"").slice(0,10)||todayISO())
+    :type==="confinement"?(data.admitDate||todayISO())
+    :(data.date||todayISO());
   const prev=state.events.find(e=>e.id===id)||{};
   const row={person_id:state.currentId,type:type,date:date,data:data,attachments:prev.attachments||[],updated_at:nowISO()};
   try{
@@ -632,6 +649,7 @@ function eventTitle(e){
     case "lab":return e.panel||"Laboratory";
     case "prescription":return (e.drug||"Medication")+(e.strength?" "+e.strength:"");
     case "emergency":return e.chiefComplaint||"Emergency visit";
+    case "confinement":return e.reason||e.dischargeDiagnosis||"Hospital admission";
     case "vitals":return vitalsTitle(e);
     case "immunization":return e.vaccine||"Immunization";
     case "note":return e.title||"Note";
@@ -654,6 +672,7 @@ function eventLine2(e){
   else if(e.type==="lab"){const r=(e.results||[]).slice(0,2).map(x=>x.analyte+" "+x.value+(x.unit?" "+x.unit:"")+(x.flag&&x.flag!=="normal"?" ("+x.flag+")":""));p=[e.facility].concat(r);}
   else if(e.type==="prescription")p=[[e.dose,e.frequency].filter(Boolean).join(" "),e.regimenTag||e.purpose,e.ongoing?"":"(ended)"];
   else if(e.type==="emergency")p=[e.facility,e.disposition];
+  else if(e.type==="confinement")p=[e.facility,(e.admitDate&&e.dischargeDate)?(fmtDate(e.admitDate)+" – "+fmtDate(e.dischargeDate)):(e.admitDate?"admitted "+fmtDate(e.admitDate):null),trunc(e.dischargeDiagnosis||e.reason||e.summary||"",70)];
   else if(e.type==="vitals")p=[e.notes];
   else if(e.type==="immunization")p=[e.facility,e.doseNumber,e.nextDueDate?"next due "+fmtDate(e.nextDueDate):null];
   else if(e.type==="note")p=[trunc(e.body||"",96)];
@@ -669,6 +688,13 @@ function statusPill(e){
     return {cls:m[e.disposition]||"mute",text:e.disposition};
   }
   if(e.type==="prescription"&&e.ongoing)return {cls:"ok",text:"ongoing"};
+  if(e.type==="confinement"){
+    if(e.admitDate&&e.dischargeDate){
+      const n=Math.max(0,Math.round((new Date(e.dischargeDate)-new Date(e.admitDate))/86400000));
+      return {cls:"mute",text:n+(n===1?" night":" nights")};
+    }
+    if(e.admitDate)return {cls:"warn",text:"admitted"};
+  }
   return null;
 }
 function sortKey(e){return e.datetime||e.date||"";}
@@ -686,6 +712,8 @@ function attentionItems(){
       out.push({t:"Immunization due",d:(e.vaccine||"")+" · due "+fmtDate(e.nextDueDate),id:e.id});
     if(e.type==="consultation"&&e.followUpDate&&e.followUpDate<t)
       out.push({t:"Follow-up date passed",d:"from the "+fmtDate(e.date)+" consultation",id:e.id});
+    if(e.type==="confinement"&&e.admitDate&&!e.dischargeDate&&e.admitDate<t)
+      out.push({t:"Hospital stay not closed out",d:(e.reason||"Admission")+" · admitted "+fmtDate(e.admitDate),id:e.id});
   });
   return out;
 }
@@ -879,11 +907,13 @@ function renderTimeline(){
   return '<div class="timeline">'+evs.map(e=>{
     const T=TYPES[e.type]||TYPES.note,pill=statusPill(e),k=sortKey(e);
     const y=String(k).slice(0,4),md=fmtDate(k).split(" ").slice(1).join(" ");
+    const nAtt=(e.attachments||[]).length;
+    const l2=[eventLine2(e),nAtt?('◦ '+nAtt+' document'+(nAtt>1?'s':'')+' attached'):""].filter(Boolean).join("  ");
     return '<button class="tl-row" data-act="open-event" data-id="'+esc(e.id)+'">'+
       '<span class="tl-date">'+esc(y)+'<b>'+esc(md)+'</b></span>'+
       '<span><span class="tl-l1"><span class="tag" style="background:'+T.color+'">'+T.tag+'</span>'+
       '<span class="tl-title">'+esc(eventTitle(e))+'</span></span>'+
-      (eventLine2(e)?'<span class="tl-l2">'+esc(eventLine2(e))+'</span>':"")+'</span>'+
+      (l2?'<span class="tl-l2">'+esc(l2)+'</span>':"")+'</span>'+
       (pill?'<span class="pill '+pill.cls+'">'+esc(pill.text)+'</span>':'<span></span>')+
       '</button>';
   }).join("")+'</div>';
@@ -1017,7 +1047,7 @@ function personModal(existing){
 function typePickerModal(){
   openModal(
     '<div class="modal-head"><h2>Add a record</h2><button class="icon-btn" data-act="close-modal" aria-label="Close">✕</button></div>'+
-    '<div class="modal-body"><p style="margin:0 0 14px;color:var(--muted)">Choose the kind of record for <b>'+esc(currentPerson().name)+'</b>.</p>'+
+    '<div class="modal-body"><p style="margin:0 0 14px;color:var(--muted)">Choose the kind of record for <b>'+esc(currentPerson().name)+'</b>. You can attach documents to any record after saving it.</p>'+
     '<div class="typegrid">'+TYPE_ORDER.map(t=>{const T=TYPES[t];
       return '<button data-act="pick-type" data-id="'+t+'"><span class="tag tg-tag" style="background:'+T.color+'">'+T.tag+'</span>'+
         '<span class="tt">'+esc(T.label)+'</span><span class="td">'+esc(T.blurb)+'</span></button>';}).join("")+'</div></div>'
@@ -1029,10 +1059,13 @@ function recordModal(type,existing){
   if(!existing){
     if(sc.some(f=>f.k==="date"))d.date=todayISO();
     if(sc.some(f=>f.k==="datetime"))d.datetime=nowMinISO();
+    if(sc.some(f=>f.k==="admitDate"))d.admitDate=todayISO();
   }
   openModal(
     '<div class="modal-head"><span class="tag" style="background:'+T.color+';align-self:center">'+T.tag+'</span><h2>'+(existing?"Edit ":"New ")+T.label.toLowerCase()+'</h2><button class="icon-btn" data-act="close-modal" aria-label="Close">✕</button></div>'+
-    '<div class="modal-body" id="recForm" data-type="'+type+'">'+schemaFormHtml(sc,d)+'</div>'+
+    '<div class="modal-body" id="recForm" data-type="'+type+'">'+
+      (existing?"":'<p style="margin:-2px 0 15px;color:var(--faint);font-size:12px">Save first, then attach documents (discharge summary, lab PDFs, photos of paperwork…) from this record’s detail view.</p>')+
+      schemaFormHtml(sc,d)+'</div>'+
     '<div class="modal-foot"><button class="btn" data-act="close-modal">Cancel</button>'+
       '<button class="btn primary" data-act="save-record" data-type="'+type+'" data-id="'+esc(existing?existing.id:"")+'">Save record</button></div>'
   );
@@ -1146,8 +1179,9 @@ function exportCSV(){
   const rows=[["Date","Type","Title","Facility","Doctor","Status","Details"]];
   state.events.slice().sort((a,b)=>sortKey(b).localeCompare(sortKey(a))).forEach(e=>{
     rows.push([sortKey(e).slice(0,16),(TYPES[e.type]||{label:e.type}).label,eventTitle(e),e.facility||e.withWhom||"",
-      e.doctor||e.prescriber||e.withWhom||"",e.status||e.disposition||(e.ongoing?"ongoing":""),
-      eventLine2(e)+(e.impression?" — "+e.impression:"")+(e.plan?" — Plan: "+e.plan:"")]);
+      e.doctor||e.prescriber||e.withWhom||e.attendingDoctor||"",
+      e.status||e.disposition||(e.ongoing?"ongoing":"")||(e.type==="confinement"?(e.dischargeDate?"discharged":e.admitDate?"admitted":""):""),
+      eventLine2(e)+(e.impression?" — "+e.impression:"")+(e.plan?" — Plan: "+e.plan:"")+(e.summary?" — Summary: "+e.summary:"")+(e.dischargeDiagnosis?" — Dx: "+e.dischargeDiagnosis:"")+((e.attachments||[]).length?" — "+e.attachments.length+" attachment(s)":"")]);
   });
   const csv=rows.map(r=>r.map(c=>'"'+String(c==null?"":c).replace(/"/g,'""')+'"').join(",")).join("\r\n");
   download((p.name||"person").replace(/[^\w]+/g,"-").toLowerCase()+"-records-"+todayISO()+".csv",csv,"text/csv");
@@ -1155,7 +1189,7 @@ function exportCSV(){
 
 /* ============================ events ============================ */
 const fileInput=document.createElement("input");
-fileInput.type="file";fileInput.accept="image/*,application/pdf";fileInput.style.display="none";
+fileInput.type="file";fileInput.accept="image/*,.heic,.heif,application/pdf,.doc,.docx,.txt";fileInput.style.display="none";
 document.body.appendChild(fileInput);
 fileInput.addEventListener("change",()=>{const f=fileInput.files[0];if(f)attachFile(f);fileInput.value="";});
 
