@@ -121,6 +121,86 @@ create policy attach_update on storage.objects for update to authenticated
 create policy attach_delete on storage.objects for delete to authenticated
   using (bucket_id = 'attachments' and public.is_member());
 
+-- ============================================================
+--  AUDIT LOG  (safe to run on an existing project)
+--  Records every insert / update / delete on people, events and
+--  members - with the acting user's email taken from their token
+--  server-side, so it can't be forged - plus one sign-in row per
+--  session. Readable by admins only.
+-- ============================================================
+create table if not exists public.audit_log (
+  id          bigint generated always as identity primary key,
+  at          timestamptz not null default now(),
+  actor_email text,
+  actor_id    uuid,
+  action      text not null,   -- insert | update | delete | signin | signout
+  entity      text not null,   -- people | events | members | auth
+  entity_id   uuid,
+  person_id   uuid,
+  summary     text
+);
+create index if not exists audit_log_at_idx on public.audit_log (at desc);
+
+alter table public.audit_log enable row level security;
+drop policy if exists audit_select on public.audit_log;
+create policy audit_select on public.audit_log for select to authenticated using (public.is_admin());
+-- no insert/update/delete policies: only the security-definer routines below write here.
+
+create or replace function public.audit_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_actor   text  := lower(coalesce(auth.jwt() ->> 'email',''));
+  v_row     jsonb := case tg_op when 'DELETE' then to_jsonb(old) else to_jsonb(new) end;
+  v_id      uuid  := nullif(v_row ->> 'id','')::uuid;
+  v_person  uuid;
+  v_summary text;
+begin
+  if tg_table_name = 'events' then
+    v_person  := nullif(v_row ->> 'person_id','')::uuid;
+    v_summary := coalesce((select name from public.people where id = v_person), '?')
+              || ' - ' || coalesce(v_row ->> 'type','')
+              || ' - ' || left(coalesce(
+                   v_row->'data'->>'purpose', v_row->'data'->>'panel',   v_row->'data'->>'drug',
+                   v_row->'data'->>'reason',  v_row->'data'->>'chiefComplaint',
+                   v_row->'data'->>'vaccine', v_row->'data'->>'title', ''), 80);
+  elsif tg_table_name = 'people' then
+    v_person  := v_id;
+    v_summary := coalesce(v_row ->> 'name','?');
+  elsif tg_table_name = 'members' then
+    v_summary := coalesce(v_row ->> 'email','?') || ' (' || coalesce(v_row ->> 'role','') || ')';
+  end if;
+
+  insert into public.audit_log(actor_email, actor_id, action, entity, entity_id, person_id, summary)
+  values (nullif(v_actor,''), auth.uid(), lower(tg_op), tg_table_name, v_id, v_person, v_summary);
+  return null;
+end $$;
+
+drop trigger if exists audit_people  on public.people;
+drop trigger if exists audit_events  on public.events;
+drop trigger if exists audit_members on public.members;
+create trigger audit_people  after insert or update or delete on public.people  for each row execute function public.audit_change();
+create trigger audit_events  after insert or update or delete on public.events  for each row execute function public.audit_change();
+create trigger audit_members after insert or update or delete on public.members for each row execute function public.audit_change();
+
+create or replace function public.log_event(p_action text, p_summary text default '')
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_member() then return; end if;
+  if p_action not in ('signin','signout') then return; end if;
+  if p_action = 'signin' and exists (
+        select 1 from public.audit_log
+        where entity = 'auth' and action = 'signin'
+          and actor_email = lower(coalesce(auth.jwt() ->> 'email',''))
+          and at > now() - interval '30 minutes') then
+    return;  -- collapse rapid reloads into one sign-in per 30 min
+  end if;
+  insert into public.audit_log(actor_email, actor_id, action, entity, summary)
+  values (lower(coalesce(auth.jwt() ->> 'email','')), auth.uid(), p_action, 'auth', left(coalesce(p_summary,''),200));
+end $$;
+
+revoke all on function public.log_event(text, text) from public;
+grant execute on function public.log_event(text, text) to authenticated;
+
 -- ---------- OPTIONAL: instant multi-device updates ----------
 -- Uncomment and run once to push live changes to open browsers.
 -- The app also refreshes on window focus and after every save, so this

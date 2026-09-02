@@ -44,6 +44,14 @@ records — it is a shared household ledger. Only admins can manage the
 members list. Anyone whose email isn't in `members` is stopped at the
 sign‑in screen.
 
+### Audit log
+
+Postgres triggers record every sign‑in and every create / edit / delete on
+family members, records and the member list — into an `audit_log` table,
+with the acting user's email taken from their auth token server‑side (not
+supplied by the browser, so it can't be forged). Admins read it in‑app via
+the **Activity** button.
+
 ## Record types
 
 Appointment · Consultation · Laboratory (per‑analyte results with reference

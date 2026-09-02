@@ -210,6 +210,11 @@ a{color:var(--primary-ink)}
 .mrow:first-child{border-top:0}
 .mre{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600}
 .mrx{display:flex;gap:6px;flex:none}
+.arow{display:grid;grid-template-columns:150px 150px 1fr;gap:10px;padding:7px 2px;border-top:1px solid var(--line);font-size:12.5px}
+.arow:first-child{border-top:0}
+.arow .aat{color:var(--faint);font-family:var(--mono);font-size:11px}
+.arow .aac{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:620px){.arow{grid-template-columns:1fr;gap:1px}.arow .aac{white-space:normal}}
 
 .imgview{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.8);display:grid;place-items:center;padding:24px}
 .imgview img{max-width:100%;max-height:100%;border-radius:8px}
@@ -495,6 +500,7 @@ async function route(){
     state.me={email:mrow.email,role:mrow.role};
     shownFor=uidNow;
     document.body.classList.remove("gated");$("#gate").hidden=true;
+    logSignin();
     startApp();
   }finally{routing=false;}
 }
@@ -503,7 +509,16 @@ function teardown(){
   channels.forEach(c=>{try{sb.removeChannel(c);}catch(e){}});channels=[];
   closeDrawer();closeModal();
 }
-async function signOut(){try{await sb.auth.signOut();}catch(e){}}
+async function signOut(){
+  try{await sb.rpc("log_event",{p_action:"signout",p_summary:""});}catch(e){}
+  try{await sb.auth.signOut();}catch(e){}
+}
+let signinLogged=false;
+async function logSignin(){
+  if(signinLogged)return;signinLogged=true;
+  const plat=(navigator.userAgentData&&navigator.userAgentData.platform)||navigator.platform||"";
+  try{await sb.rpc("log_event",{p_action:"signin",p_summary:(plat+" · "+(navigator.language||"")).trim()});}catch(e){}
+}
 
 function startApp(){
   renderAll();
@@ -661,6 +676,32 @@ async function memberDel(id){
   const {error}=await sb.from("members").delete().eq("id",id);
   if(error){toast("Could not remove: "+error.message);return;}
   membersModal();
+}
+
+/* ============================ activity log ============================ */
+function fmtStamp(iso){
+  try{return new Date(iso).toLocaleString(undefined,{year:"numeric",month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit"});}
+  catch(e){return fmtDateTime(iso);}
+}
+async function activityModal(){
+  openModal(
+    '<div class="modal-head"><h2>Activity log</h2><button class="icon-btn" data-act="close-modal" aria-label="Close">✕</button></div>'+
+    '<div class="modal-body" id="auditBody"><div class="loading" style="padding:16px 0">Loading…</div></div>'+
+    '<div class="modal-foot"><button class="btn" data-act="close-modal">Done</button></div>'
+  );
+  const {data,error}=await sb.from("audit_log").select("*").order("at",{ascending:false}).limit(300);
+  const body=$("#auditBody");if(!body)return;
+  if(error){body.innerHTML='<p style="color:var(--crit)">Could not load the log: '+esc(error.message)+' — has the latest schema.sql been run?</p>';return;}
+  if(!data||!data.length){body.innerHTML='<p style="color:var(--muted)">Nothing recorded yet. Sign-ins and changes from here on will appear.</p>';return;}
+  const VERB={insert:"added",update:"edited",delete:"deleted",signin:"signed in",signout:"signed out"};
+  const ENT={people:"family member",events:"record",members:"member",auth:""};
+  body.innerHTML='<div class="audit">'+data.map(r=>{
+    const verb=VERB[r.action]||r.action;
+    const tail=(r.entity==="auth")?"":" "+esc(ENT[r.entity]||r.entity)+(r.summary?" — "+esc(r.summary):"");
+    return '<div class="arow"><span class="aat">'+esc(fmtStamp(r.at))+'</span>'+
+      '<span class="aac" title="'+esc(r.actor_email||"system")+'">'+esc(r.actor_email||"system")+'</span>'+
+      '<span class="aav">'+esc(verb)+tail+'</span></div>';
+  }).join("")+'</div>';
 }
 
 /* ============================ derived ============================ */
@@ -835,6 +876,7 @@ function renderTop(){
   $("#topActions").innerHTML=
     (state.me?'<span class="whoami" title="'+esc(state.me.email)+'">'+esc(state.me.email)+'</span>':"")+
     (admin?'<button class="btn sm" data-act="members">Members</button>':"")+
+    (admin?'<button class="btn sm" data-act="activity">Activity</button>':"")+
     '<button class="btn sm" data-act="export-json">Backup</button>'+
     '<button class="icon-btn" data-act="theme" title="Switch theme" aria-label="Switch theme">'+(isDark()?"☀":"☾")+'</button>'+
     (state.me?'<button class="btn sm" data-act="signout">Sign out</button>':"");
@@ -1325,6 +1367,7 @@ document.addEventListener("click",ev=>{
 
     /* app */
     case "members":membersModal();break;
+    case "activity":activityModal();break;
     case "mem-add":memberAdd();break;
     case "mem-role":memberRole(id,t.dataset.role);break;
     case "mem-del":memberDel(id);break;

@@ -102,6 +102,19 @@ bottom of `schema.sql` and run them. Open browsers then update the moment
 someone saves. Without it, the app still refreshes when you switch back to
 the tab and after every change you make.
 
+## After pulling app updates
+
+When `supabase/schema.sql` changes (new tables, policies, triggers), re‑run
+the **whole file** in the SQL Editor — it's written to be safe to run again
+(`create ... if not exists`, `create or replace`, `drop policy/trigger if
+exists`). Your data and your `members` rows are untouched. The frontend
+picks up changes automatically on the next Vercel deploy.
+
+The **Activity log** (admin → "Activity" button) needs this re‑run: it adds
+an `audit_log` table and triggers that record every sign‑in and every
+create / edit / delete, with the acting user taken from their auth token so
+it can't be spoofed from the browser. Only admins can read it.
+
 ## Costs
 
 Supabase free tier (500 MB database, 1 GB file storage, 50k monthly active
