@@ -691,7 +691,7 @@ async function activityModal(){
   );
   const {data,error}=await sb.from("audit_log").select("*").order("at",{ascending:false}).limit(300);
   const body=$("#auditBody");if(!body)return;
-  if(error){body.innerHTML='<p style="color:var(--crit)">Could not load the log: '+esc(error.message)+' — has the latest schema.sql been run?</p>';return;}
+  if(error){body.innerHTML='<p style="color:var(--crit)">Could not load the log: '+esc(error.message)+'</p><p style="color:var(--muted);font-size:12px">Re-run <code>supabase/schema.sql</code> in the SQL Editor. If it already ran cleanly, run <code>notify pgrst, \'reload schema\';</code> once.</p>';return;}
   if(!data||!data.length){body.innerHTML='<p style="color:var(--muted)">Nothing recorded yet. Sign-ins and changes from here on will appear.</p>';return;}
   const VERB={insert:"added",update:"edited",delete:"deleted",signin:"signed in",signout:"signed out"};
   const ENT={people:"family member",events:"record",members:"member",auth:""};
