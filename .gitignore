@@ -1,0 +1,5 @@
+shot*.png
+*.local
+.vercel
+.DS_Store
+node_modules/
