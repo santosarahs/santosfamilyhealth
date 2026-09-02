@@ -11,11 +11,14 @@ create extension if not exists "pgcrypto";
 create table if not exists public.members (
   id          uuid primary key default gen_random_uuid(),
   email       text not null unique,
-  role        text not null default 'member' check (role in ('admin','member')),
+  role        text not null default 'member' check (role in ('admin','member','viewer')),
   invited_by  uuid,
   created_at  timestamptz not null default now()
 );
 create index if not exists members_email_idx on public.members (lower(email));
+-- roles: admin (everything) | member (view + add + edit) | viewer (view only)
+alter table public.members drop constraint if exists members_role_check;
+alter table public.members add  constraint members_role_check check (role in ('admin','member','viewer'));
 
 create table if not exists public.people (
   id          uuid primary key default gen_random_uuid(),
@@ -66,10 +69,22 @@ create or replace function public.is_admin() returns boolean
   );
 $$;
 
+-- can this viewer change data? admins and members yes, viewers no.
+create or replace function public.is_editor() returns boolean
+  language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.members
+    where lower(email) = lower(coalesce(auth.jwt() ->> 'email',''))
+      and role in ('admin','member')
+  );
+$$;
+
 revoke all on function public.is_member() from public;
-revoke all on function public.is_admin() from public;
+revoke all on function public.is_admin()  from public;
+revoke all on function public.is_editor() from public;
 grant execute on function public.is_member() to authenticated;
-grant execute on function public.is_admin() to authenticated;
+grant execute on function public.is_admin()  to authenticated;
+grant execute on function public.is_editor() to authenticated;
 
 -- ---------- row level security ----------
 alter table public.members enable row level security;
@@ -90,8 +105,8 @@ drop policy if exists people_insert on public.people;
 drop policy if exists people_update on public.people;
 drop policy if exists people_delete on public.people;
 create policy people_select on public.people for select to authenticated using (public.is_member());
-create policy people_insert on public.people for insert to authenticated with check (public.is_member());
-create policy people_update on public.people for update to authenticated using (public.is_member()) with check (public.is_member());
+create policy people_insert on public.people for insert to authenticated with check (public.is_editor());
+create policy people_update on public.people for update to authenticated using (public.is_editor()) with check (public.is_editor());
 create policy people_delete on public.people for delete to authenticated using (public.is_admin());  -- admin only
 
 drop policy if exists events_select on public.events;
@@ -99,8 +114,8 @@ drop policy if exists events_insert on public.events;
 drop policy if exists events_update on public.events;
 drop policy if exists events_delete on public.events;
 create policy events_select on public.events for select to authenticated using (public.is_member());
-create policy events_insert on public.events for insert to authenticated with check (public.is_member());
-create policy events_update on public.events for update to authenticated using (public.is_member()) with check (public.is_member());
+create policy events_insert on public.events for insert to authenticated with check (public.is_editor());
+create policy events_update on public.events for update to authenticated using (public.is_editor()) with check (public.is_editor());
 create policy events_delete on public.events for delete to authenticated using (public.is_admin());  -- admin only
 
 -- ---------- storage bucket for attachments ----------
@@ -115,11 +130,11 @@ drop policy if exists attach_delete on storage.objects;
 create policy attach_select on storage.objects for select to authenticated
   using (bucket_id = 'attachments' and public.is_member());
 create policy attach_insert on storage.objects for insert to authenticated
-  with check (bucket_id = 'attachments' and public.is_member());
+  with check (bucket_id = 'attachments' and public.is_editor());
 create policy attach_update on storage.objects for update to authenticated
-  using (bucket_id = 'attachments' and public.is_member());
+  using (bucket_id = 'attachments' and public.is_editor());
 create policy attach_delete on storage.objects for delete to authenticated
-  using (bucket_id = 'attachments' and public.is_member());
+  using (bucket_id = 'attachments' and public.is_editor());
 
 -- ============================================================
 --  AUDIT LOG  (safe to run on an existing project)

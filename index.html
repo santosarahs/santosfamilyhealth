@@ -459,6 +459,7 @@ const state={session:null,me:null,people:[],events:[],currentId:null,filter:"all
 let channels=[];
 let shownFor=null, routing=false;
 function isAdmin(){return !!(state.me&&state.me.role==="admin");}
+function isEditor(){return !!(state.me&&(state.me.role==="admin"||state.me.role==="member"));}
 
 /* ============================ boot ============================ */
 bootTheme();
@@ -569,6 +570,7 @@ async function loadEvents(pid){
   renderAll();
 }
 async function savePerson(id){
+  if(!isEditor()){toast("Your account is view-only.");return;}
   const root=$("#personForm");
   if(!validate(root,PERSON_SCHEMA)){toast("A name is required.");return;}
   const d=readSchemaForm(root,PERSON_SCHEMA);
@@ -601,6 +603,7 @@ async function deletePerson(id){
   }catch(err){toast("Could not delete: "+(err.message||err));}
 }
 async function saveRecord(type,id){
+  if(!isEditor()){toast("Your account is view-only.");return;}
   const root=$("#recForm"),sc=SCHEMAS[type];
   if(!validate(root,sc)){toast("Fill in the required fields (marked *).");return;}
   const data=readSchemaForm(root,sc);
@@ -639,20 +642,23 @@ async function membersModal(){
   const {data,error}=await sb.from("members").select("*").order("created_at",{ascending:true});
   if(error){toast("Could not load members: "+error.message);return;}
   const list=data||[];
+  const pillCls=r=>r==="admin"?"info":r==="viewer"?"mute":"ok";
   const rows=list.map(m=>{
     const you=m.email===state.me.email;
+    const roleSel='<select data-act="mem-role-sel" data-id="'+esc(m.id)+'" style="font-size:12px;padding:4px 7px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);color:inherit">'+
+      ["admin","member","viewer"].map(rr=>'<option value="'+rr+'"'+(rr===m.role?" selected":"")+'>'+rr+'</option>').join("")+'</select>';
     return '<div class="mrow"><span class="mre">'+esc(m.email)+'</span>'+
-      '<span class="pill '+(m.role==="admin"?"info":"mute")+'">'+esc(m.role)+'</span>'+
-      '<span class="mrx">'+(you?'<span style="color:var(--faint);font-size:11px;align-self:center">you</span>':
-        '<button class="btn sm" data-act="mem-role" data-id="'+esc(m.id)+'" data-role="'+(m.role==="admin"?"member":"admin")+'">Make '+(m.role==="admin"?"member":"admin")+'</button>'+
-        '<button class="btn sm danger" data-act="mem-del" data-id="'+esc(m.id)+'">Remove</button>')+'</span></div>';
+      (you
+        ?'<span class="pill '+pillCls(m.role)+'">'+esc(m.role)+'</span><span style="color:var(--faint);font-size:11px">you</span>'
+        :'<span class="mrx">'+roleSel+'<button class="btn sm danger" data-act="mem-del" data-id="'+esc(m.id)+'">Remove</button></span>')+
+      '</div>';
   }).join("");
   openModal(
     '<div class="modal-head"><h2>Family members</h2><button class="icon-btn" data-act="close-modal" aria-label="Close">✕</button></div>'+
     '<div class="modal-body"><p style="margin:0 0 12px;color:var(--muted)">Only these email addresses can sign in. After you add someone, tell them to open this site and request a sign-in link with that address.</p>'+
     '<div class="mlist">'+rows+'</div>'+
     '<div class="refform" style="margin-top:16px"><label class="fld"><span>Email address</span><input id="memEmail" type="email" autocomplete="off" placeholder="name@example.com"></label>'+
-    '<label class="fld"><span>Role</span><select id="memRole"><option value="member">Member — can view &amp; edit all records</option><option value="admin">Admin — can also manage members</option></select></label>'+
+    '<label class="fld"><span>Role</span><select id="memRole"><option value="member">Member — view &amp; edit records</option><option value="viewer">Viewer — view only, no changes</option><option value="admin">Admin — also manage members</option></select></label>'+
     '<div><button class="btn primary sm" data-act="mem-add">Add member</button></div></div></div>'+
     '<div class="modal-foot"><button class="btn" data-act="close-modal">Done</button></div>'
   );
@@ -668,6 +674,11 @@ async function memberAdd(){
 }
 async function memberRole(id,role){
   if(!isAdmin()){toast("Only an admin can change roles.");return;}
+  const {data}=await sb.from("members").select("id,role");
+  const target=(data||[]).find(m=>m.id===id);
+  if(target&&target.role==="admin"&&role!=="admin"&&(data||[]).filter(m=>m.role==="admin").length<=1){
+    toast("Make someone else an admin first — there must be at least one.");membersModal();return;
+  }
   const {error}=await sb.from("members").update({role:role}).eq("id",id);
   if(error){toast("Could not update: "+error.message);return;}
   membersModal();
@@ -894,15 +905,17 @@ function renderRail(){
       '<span><span class="pn">'+esc(p.name)+'</span><br><span class="pr">'+esc(p.relation||"")+'</span></span>'+dot+'</button>';
   }).join("");
   $("#rail").innerHTML='<h2>Family</h2>'+rows+
-    '<button class="btn ghost sm" style="justify-content:flex-start;margin-top:4px" data-act="add-person">＋ Add family member</button>'+
-    '<div class="rail-foot">Stored in your family’s private database. Only invited members can sign in.</div>';
+    (isEditor()?'<button class="btn ghost sm" style="justify-content:flex-start;margin-top:4px" data-act="add-person">＋ Add family member</button>':"")+
+    '<div class="rail-foot">Stored in your family’s private database. Only invited members can sign in.'+
+      (state.me&&!isEditor()?'<br><b>View-only access.</b>':"")+'</div>';
 }
 function renderMain(){
   if(!state.loaded){$("#main").innerHTML='<div class="loading">Loading…</div>';return;}
   if(!state.people.length){
     $("#main").innerHTML='<div class="empty" style="margin-top:10px"><h3>No family members yet</h3>'+
-      '<p>Add the first person whose medical history you want to keep.</p>'+
-      '<button class="btn primary" style="margin-top:12px" data-act="add-person">＋ Add family member</button></div>';
+      (isEditor()
+        ?'<p>Add the first person whose medical history you want to keep.</p><button class="btn primary" style="margin-top:12px" data-act="add-person">＋ Add family member</button>'
+        :'<p>Nothing has been added to this ledger yet. Your account is view-only.</p>')+'</div>';
     return;
   }
   const p=currentPerson();if(!p){$("#main").innerHTML="";return;}
@@ -918,7 +931,7 @@ function renderMain(){
     (chips?'<div class="chips">'+chips+'</div>':"")+'</div>'+
     '<div class="phead-actions"><button class="btn sm" data-act="print-person">Print / PDF</button>'+
       '<button class="btn sm" data-act="export-csv">Export CSV</button>'+
-      '<button class="btn sm" data-act="edit-person">Edit profile</button></div></section>');
+      (isEditor()?'<button class="btn sm" data-act="edit-person">Edit profile</button>':"")+'</div></section>');
   if((p.careTeam||[]).some(d=>d.name))
     parts.push('<div class="careteam"><b>Care team:</b> '+(p.careTeam||[]).filter(d=>d.name).map(d=>esc(d.name)+(d.role?" ("+esc(d.role)+")":"")).join(" · ")+'</div>');
   if(p.notes)parts.push('<div class="careteam">'+esc(p.notes)+'</div>');
@@ -935,7 +948,7 @@ function renderMain(){
       '<div class="at">'+esc(e.purpose||"Appointment")+'</div>'+
       '<div class="as">'+esc([e.withWhom,e.facility].filter(Boolean).join(" · ")||"—")+'</div></div>').join("")+'</section>');
 
-  parts.push('<div class="sec-head"><h2>History</h2><button class="btn primary" data-act="add-record">＋ Add record</button></div>');
+  parts.push('<div class="sec-head"><h2>History</h2>'+(isEditor()?'<button class="btn primary" data-act="add-record">＋ Add record</button>':"")+'</div>');
   parts.push(renderFilters());
   parts.push(renderTimeline());
   $("#main").innerHTML=parts.join("");
@@ -973,7 +986,7 @@ function renderFilters(){
 function renderTimeline(){
   let evs=state.events.slice().sort((a,b)=>sortKey(b).localeCompare(sortKey(a)));
   if(state.filter!=="all")evs=evs.filter(e=>e.type===state.filter);
-  if(!evs.length)return '<div class="empty"><h3>No records yet</h3><p>Add the first consultation, lab result, prescription or appointment for '+esc(currentPerson().name)+'.</p><button class="btn primary" style="margin-top:12px" data-act="add-record">＋ Add record</button></div>';
+  if(!evs.length)return '<div class="empty"><h3>No records yet</h3>'+(isEditor()?'<p>Add the first consultation, lab result, prescription or appointment for '+esc(currentPerson().name)+'.</p><button class="btn primary" style="margin-top:12px" data-act="add-record">＋ Add record</button>':'<p>No records for '+esc(currentPerson().name)+' yet.</p>')+'</div>';
   return '<div class="timeline">'+evs.map(e=>{
     const T=TYPES[e.type]||TYPES.note,pill=statusPill(e),k=sortKey(e);
     const y=String(k).slice(0,4),md=fmtDate(k).split(" ").slice(1).join(" ");
@@ -1009,9 +1022,9 @@ function renderDrawer(e){
   }
   const atts=e.attachments||[];
   const attHtml='<div class="frow"><span class="fk">Attachments</span><span class="fv"><div class="att" id="attList">'+
-    (atts.length?atts.map(a=>attRow(a)).join(""):'<span style="color:var(--faint)">None yet</span>')+'</div>'+
-    '<div class="att-add"><button class="btn sm" data-act="att-file">＋ Attach a file</button><button class="btn sm" data-act="att-ref">＋ Add a reference</button></div>'+
-    '<div id="refFormSlot"></div></span></div>';
+    (atts.length?atts.map(a=>attRow(a)).join(""):'<span style="color:var(--faint)">None</span>')+'</div>'+
+    (isEditor()?'<div class="att-add"><button class="btn sm" data-act="att-file">＋ Attach a file</button><button class="btn sm" data-act="att-ref">＋ Add a reference</button></div>'+
+    '<div id="refFormSlot"></div>':"")+'</span></div>';
 
   $("#drawer").innerHTML=
     '<div class="dw-head"><span class="tag" style="background:'+T.color+';align-self:center">'+T.tag+'</span>'+
@@ -1019,7 +1032,8 @@ function renderDrawer(e){
     '<div class="dw-body"><div class="dw-meta">'+esc(T.label)+' · '+esc(fmtDate(sortKey(e)))+
       (e.updatedAt?' · edited '+new Date(e.updatedAt).toLocaleDateString():"")+'</div>'+
     rows.join("")+resHtml+attHtml+
-    '<div style="display:flex;gap:8px;margin-top:22px;flex-wrap:wrap"><button class="btn" data-act="edit-record">Edit</button>'+
+    '<div style="display:flex;gap:8px;margin-top:22px;flex-wrap:wrap">'+
+      (isEditor()?'<button class="btn" data-act="edit-record">Edit</button>':"")+
       '<button class="btn" data-act="print-record">Print / PDF</button>'+
       (isAdmin()?'<button class="btn danger" data-act="del-record">Delete</button>':"")+'</div>'+
     '</div>';
@@ -1037,7 +1051,7 @@ function attRow(a){
     (a.refLocation?'<span class="ai-l">Kept at: '+esc(a.refLocation)+'</span>':"")+
     (a.caption?'<span class="ai-l">'+esc(a.caption)+'</span>':"")+
     (a.size?'<span class="ai-l">'+esc(fileSize(a.size))+'</span>':"")+'</span>'+
-    '<span class="ai-x">'+act+'<button class="btn sm danger" data-act="att-del" data-id="'+esc(a.id)+'" aria-label="Remove">✕</button></span></div>';
+    '<span class="ai-x">'+act+(isEditor()?'<button class="btn sm danger" data-act="att-del" data-id="'+esc(a.id)+'" aria-label="Remove">✕</button>':"")+'</span></div>';
 }
 
 /* ============================ forms ============================ */
@@ -1156,6 +1170,7 @@ function confirmModal(msg,confirmLabel){
 /* ============================ attachments ============================ */
 const MAX_FILE=25*1024*1024;
 async function attachFile(file){
+  if(!isEditor()){toast("Your account is view-only.");return;}
   const eid=state.openEventId,pid=state.currentId;
   if(!eid||!pid)return;
   if(file.size>MAX_FILE){toast('“'+file.name+'” is '+fileSize(file.size)+'. The limit is 25 MB — add it as a reference instead.');return;}
@@ -1175,6 +1190,7 @@ async function attachFile(file){
   }catch(err){toast("Upload failed: "+(err.message||err));}
 }
 async function addReference(name,loc){
+  if(!isEditor()){toast("Your account is view-only.");return;}
   const eid=state.openEventId;if(!eid)return;
   if(!name.trim()){toast("Give the reference a name.");return;}
   try{
@@ -1186,6 +1202,7 @@ async function addReference(name,loc){
   }catch(err){toast("Could not add: "+(err.message||err));}
 }
 async function removeAttachment(attId){
+  if(!isEditor()){toast("Your account is view-only.");return;}
   const eid=state.openEventId;if(!eid)return;
   try{
     const ev=state.events.find(e=>e.id===eid);
@@ -1429,6 +1446,10 @@ async function sendLink(){
     renderGate("sent");
   }catch(err){renderGate("login",(err.message||String(err))+".");}
 }
+document.addEventListener("change",ev=>{
+  const t=ev.target.closest("[data-act]");if(!t)return;
+  if(t.dataset.act==="mem-role-sel")memberRole(t.dataset.id,t.value);
+});
 $("#scrim").addEventListener("click",closeDrawer);
 $("#modalRoot").addEventListener("click",e=>{if(e.target.id==="modalRoot")closeModal();});
 document.addEventListener("keydown",e=>{
