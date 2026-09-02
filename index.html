@@ -713,7 +713,12 @@ async function memberAdd(){
   const role=$("#memRole").value;
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("Enter a valid email address.");return;}
   const {error}=await sb.from("members").insert({email:email,role:role,invited_by:state.session.user.id});
-  if(error){toast(/duplicate|unique/i.test(error.message)?"That address is already a member.":"Could not add: "+error.message);return;}
+  if(error){
+    toast(/duplicate|unique/i.test(error.message||"") ? "That address is already a member."
+      : /role_check|23514/.test((error.code||"")+(error.message||"")) ? "The database doesn’t allow the “viewer” role yet — re-run supabase/schema.sql."
+      : "Could not add: "+error.message);
+    return;
+  }
   toast("Added "+email+". Tell them to open "+location.origin+" and request a link.");
   membersModal();
 }
@@ -725,7 +730,12 @@ async function memberRole(id,role){
     toast("Make someone else an admin first — there must be at least one.");membersModal();return;
   }
   const {error}=await sb.from("members").update({role:role}).eq("id",id);
-  if(error){toast("Could not update: "+error.message);return;}
+  if(error){
+    toast(/role_check|23514/.test((error.code||"")+(error.message||""))
+      ? "The database doesn’t allow the “viewer” role yet — re-run supabase/schema.sql."
+      : "Could not update: "+error.message);
+    membersModal();return;
+  }
   membersModal();
 }
 async function memberDel(id){
