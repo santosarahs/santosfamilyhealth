@@ -241,6 +241,27 @@ body.gated .topbar,body.gated .shell{display:none}
   .rail .btn{flex:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+#printRoot{position:fixed;left:-99999px;top:0;width:190mm;background:#fff}
+@media print{
+  html,body{background:#fff!important}
+  .topbar,.shell,#gate,#scrim,#drawer,#modalRoot,#toast,.imgview{display:none!important}
+  #printRoot{position:static;left:auto;top:auto;width:auto;display:block!important;color:#111;font:12px/1.5 "Public Sans",system-ui,sans-serif}
+  #printRoot h1{font-family:"Spectral",Georgia,serif;font-size:19px;margin:0 0 3px}
+  #printRoot h2{font-family:"Spectral",Georgia,serif;font-size:13.5px;margin:16px 0 6px;border-bottom:1px solid #999;padding-bottom:3px}
+  #printRoot .pr-meta{color:#555;font-size:10.5px;margin-bottom:12px}
+  #printRoot .pr-kv{display:grid;grid-template-columns:150px 1fr;gap:1px 12px;font-size:11px;margin:1px 0}
+  #printRoot .pr-kv .pk{color:#555}
+  #printRoot .pr-kv .pv{white-space:pre-wrap}
+  #printRoot .pr-rec{border:1px solid #ccc;border-radius:6px;padding:8px 11px;margin:7px 0;break-inside:avoid}
+  #printRoot .pr-rh{font-weight:700;font-size:12px;margin:2px 0 4px}
+  #printRoot .pr-rt{color:#666;font-family:"IBM Plex Mono",monospace;font-size:10px}
+  #printRoot table.pr-res{border-collapse:collapse;width:100%;font-size:10px;margin-top:5px}
+  #printRoot table.pr-res th,#printRoot table.pr-res td{border:1px solid #bbb;padding:3px 5px;text-align:left}
+  #printRoot .pr-appendix > div{break-inside:avoid;margin:8px 0}
+  #printRoot .pr-appendix img{max-width:100%;max-height:215mm;border:1px solid #ccc;display:block}
+  @page{margin:14mm}
+}
 </style>
 </head>
 <body>
@@ -258,6 +279,7 @@ body.gated .topbar,body.gated .shell{display:none}
 <aside class="drawer" id="drawer" hidden></aside>
 <div id="modalRoot" hidden></div>
 <div id="toast" hidden></div>
+<div id="printRoot"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -847,7 +869,8 @@ function renderMain(){
   parts.push('<section class="phead"><span class="avatar">'+esc(initials(p.name))+'</span>'+
     '<div><h1>'+esc(p.name)+'</h1><div class="phead-sub">'+esc(sub||"—")+'</div>'+
     (chips?'<div class="chips">'+chips+'</div>':"")+'</div>'+
-    '<div class="phead-actions"><button class="btn sm" data-act="export-csv">Export CSV</button>'+
+    '<div class="phead-actions"><button class="btn sm" data-act="print-person">Print / PDF</button>'+
+      '<button class="btn sm" data-act="export-csv">Export CSV</button>'+
       '<button class="btn sm" data-act="edit-person">Edit profile</button></div></section>');
   if((p.careTeam||[]).some(d=>d.name))
     parts.push('<div class="careteam"><b>Care team:</b> '+(p.careTeam||[]).filter(d=>d.name).map(d=>esc(d.name)+(d.role?" ("+esc(d.role)+")":"")).join(" · ")+'</div>');
@@ -949,7 +972,8 @@ function renderDrawer(e){
     '<div class="dw-body"><div class="dw-meta">'+esc(T.label)+' · '+esc(fmtDate(sortKey(e)))+
       (e.updatedAt?' · edited '+new Date(e.updatedAt).toLocaleDateString():"")+'</div>'+
     rows.join("")+resHtml+attHtml+
-    '<div style="display:flex;gap:8px;margin-top:22px"><button class="btn" data-act="edit-record">Edit</button>'+
+    '<div style="display:flex;gap:8px;margin-top:22px;flex-wrap:wrap"><button class="btn" data-act="edit-record">Edit</button>'+
+      '<button class="btn" data-act="print-record">Print / PDF</button>'+
       '<button class="btn danger" data-act="del-record">Delete</button></div>'+
     '</div>';
   $("#drawer").hidden=false;$("#scrim").hidden=false;
@@ -1187,6 +1211,92 @@ function exportCSV(){
   download((p.name||"person").replace(/[^\w]+/g,"-").toLowerCase()+"-records-"+todayISO()+".csv",csv,"text/csv");
 }
 
+/* ============================ print / PDF ============================ */
+function pkv(label,val){return val?'<div class="pr-kv"><span class="pk">'+esc(label)+'</span><span class="pv">'+esc(val)+'</span></div>':"";}
+function recordBlock(e){
+  const T=TYPES[e.type]||{label:e.type},sc=SCHEMAS[e.type]||[];
+  let b='<div class="pr-rec"><div class="pr-rt">'+esc(fmtDate(sortKey(e)))+' · '+esc(T.label)+'</div>'+
+    '<div class="pr-rh">'+esc(eventTitle(e))+'</div>';
+  sc.forEach(f=>{
+    if(f.t==="group"||f.k==="results")return;
+    if(f.t==="checkbox"){if(e[f.k])b+=pkv(f.l,"Yes");return;}
+    const v=e[f.k];if(v==null||v==="")return;
+    b+=pkv(f.l,f.t==="datetime-local"?fmtDateTime(v):(f.t==="date"?fmtDate(v):v));
+  });
+  if(e.type==="lab"&&(e.results||[]).length){
+    b+='<table class="pr-res"><tr><th>Test</th><th>Result</th><th>Reference</th><th>Flag</th></tr>'+
+      e.results.map(r=>'<tr><td>'+esc(r.analyte||"")+'</td><td>'+esc((r.value||"")+(r.unit?" "+r.unit:""))+'</td><td>'+esc(r.ref||"")+'</td><td>'+esc(r.flag||"")+'</td></tr>').join("")+'</table>';
+  }
+  const atts=e.attachments||[];
+  if(atts.length)b+=pkv("Attachments",atts.map(a=>(a.name||"file")+(a.refLocation?" — kept at "+a.refLocation:"")).join("; "));
+  return b+'</div>';
+}
+function imgAppendix(list){
+  if(!list.length)return "";
+  return '<div class="pr-appendix">'+list.map(x=>'<div><div class="pr-rt">'+esc(x.caption)+'</div><img src="'+esc(x.url)+'" alt=""></div>').join("")+'</div>';
+}
+async function collectImageUrls(evs){
+  const out={},jobs=[];
+  evs.forEach(e=>(e.attachments||[]).forEach(a=>{
+    if(a.hasFile&&a.kind==="image"&&a.path)jobs.push(signedUrl(a.path).then(u=>{out[a.id]=u;}).catch(()=>{}));
+  }));
+  await Promise.race([Promise.all(jobs),new Promise(r=>setTimeout(r,8000))]);
+  return out;
+}
+function doPrint(inner,title){
+  const r=$("#printRoot");r.innerHTML=inner;
+  const oldTitle=document.title;if(title)document.title=title;
+  let cleared=false;
+  const done=()=>{if(cleared)return;cleared=true;r.innerHTML="";document.title=oldTitle;window.removeEventListener("afterprint",done);};
+  window.addEventListener("afterprint",done);
+  const imgs=Array.from(r.querySelectorAll("img"));
+  const go=()=>{window.print();setTimeout(done,60000);};
+  if(!imgs.length){go();return;}
+  Promise.race([
+    Promise.all(imgs.map(im=>im.complete?0:new Promise(res=>{im.onload=im.onerror=res;}))),
+    new Promise(res=>setTimeout(res,6000))
+  ]).then(go);
+}
+async function printPerson(){
+  const p=currentPerson();if(!p)return;
+  toast("Building document…");
+  const evs=state.events.slice().sort((a,b)=>sortKey(b).localeCompare(sortKey(a)));
+  const imgs=await collectImageUrls(evs);
+  const age=ageStr(p.dob);
+  let s='<h1>'+esc(p.name)+' — Medical record</h1>'+
+    '<div class="pr-meta">'+esc([p.relation,age,p.sex,p.bloodType?"Blood type "+p.bloodType:""].filter(Boolean).join("   ·   "))+
+    '<br>Generated '+esc(fmtDate(todayISO()))+' · Santos Family Health · '+evs.length+' record'+(evs.length===1?"":"s")+'</div>';
+  s+='<h2>Profile</h2>';
+  s+=pkv("Date of birth",p.dob?fmtDate(p.dob):"");
+  if((p.allergies||[]).some(a=>a.name))s+=pkv("Allergies",(p.allergies||[]).filter(a=>a.name).map(a=>a.name+(a.reaction?" ("+a.reaction+")":"")).join("; "));
+  if((p.conditions||[]).some(c=>c.name))s+=pkv("Conditions",(p.conditions||[]).filter(c=>c.name).map(c=>c.name+(c.status?" — "+c.status:"")).join("; "));
+  if((p.careTeam||[]).some(d=>d.name))s+=pkv("Care team",(p.careTeam||[]).filter(d=>d.name).map(d=>d.name+(d.role?" ("+d.role+")":"")+(d.contact?", "+d.contact:"")).join("; "));
+  if(p.notes)s+=pkv("Notes",p.notes);
+  const am=activeMeds();
+  if(am.length){
+    s+='<h2>Active medications</h2>';
+    am.forEach(m=>{s+=pkv((m.drug||"")+(m.strength?" "+m.strength:""),[m.dose,m.frequency,m.route].filter(Boolean).join(" · ")+(m.purpose?" — "+m.purpose:""));});
+  }
+  s+='<h2>Records</h2>';
+  evs.forEach(e=>{s+=recordBlock(e);});
+  const app=[];
+  evs.forEach(e=>(e.attachments||[]).forEach(a=>{if(a.kind==="image"&&imgs[a.id])app.push({url:imgs[a.id],caption:fmtDate(sortKey(e))+" · "+eventTitle(e)+" · "+(a.name||"")});}));
+  if(app.length)s+='<h2>Attached images</h2>'+imgAppendix(app);
+  doPrint(s,(p.name||"record").replace(/[^\w ]+/g,"").trim()+" — medical record — "+todayISO());
+}
+async function printRecord(id){
+  const e=state.events.find(x=>x.id===id);if(!e)return;
+  const p=currentPerson();
+  toast("Building document…");
+  const imgs=await collectImageUrls([e]);
+  const T=TYPES[e.type]||{label:e.type};
+  let s='<h1>'+esc(p?p.name:"")+'</h1><div class="pr-meta">'+esc(T.label)+' · '+esc(fmtDate(sortKey(e)))+
+    '   —   Generated '+esc(fmtDate(todayISO()))+' · Santos Family Health</div>'+recordBlock(e);
+  const list=(e.attachments||[]).filter(a=>a.kind==="image"&&imgs[a.id]).map(a=>({url:imgs[a.id],caption:a.name||""}));
+  if(list.length)s+='<h2>Attached images</h2>'+imgAppendix(list);
+  doPrint(s,((p&&p.name)||"record").replace(/[^\w ]+/g,"").trim()+" — "+T.label+" "+fmtDate(sortKey(e)));
+}
+
 /* ============================ events ============================ */
 const fileInput=document.createElement("input");
 fileInput.type="file";fileInput.accept="image/*,.heic,.heif,application/pdf,.doc,.docx,.txt";fileInput.style.display="none";
@@ -1234,6 +1344,8 @@ document.addEventListener("click",ev=>{
     case "filter":state.filter=id;renderMain();break;
     case "export-json":exportJSON();break;
     case "export-csv":exportCSV();break;
+    case "print-person":printPerson();break;
+    case "print-record":printRecord(state.openEventId);break;
     case "att-file":fileInput.click();break;
     case "att-ref":{
       const slot=$("#refFormSlot");
